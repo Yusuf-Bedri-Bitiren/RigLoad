@@ -8,9 +8,15 @@ A Rust-core Python data loader for synchronized RGB-D samples, with geometric au
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install maturin pytest
-.\.venv\Scripts\maturin.exe develop
+.\.venv\Scripts\python.exe -m pip install maturin
+.\.venv\Scripts\maturin.exe develop --extras test
 .\.venv\Scripts\python.exe -m pytest
+```
+
+Synthetic RGB-D + LiDAR data (seeded; a 20-sample set is committed in `tests/fixtures/synthetic/`):
+
+```powershell
+.\.venv\Scripts\python.exe tools\gen_synthetic.py --out data\synthetic --n 1000 --seed 0
 ```
 
 Full environment details: [docs/SETUP.md](docs/SETUP.md).

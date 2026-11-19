@@ -1,0 +1,2 @@
+# Keep fixture bytes exactly as generated (no CRLF conversion of manifest.jsonl / meta.json).
+tests/fixtures/** -text

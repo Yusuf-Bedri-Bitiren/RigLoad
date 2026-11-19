@@ -36,6 +36,6 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip install maturin pytest
-          maturin develop
+          pip install maturin
+          maturin develop --extras test
           pytest -q

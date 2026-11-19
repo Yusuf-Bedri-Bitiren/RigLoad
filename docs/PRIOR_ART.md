@@ -34,6 +34,14 @@ property-tested consistency*, not novelty of the geometry.
 | [MMDetection3D](https://mmdetection3d.readthedocs.io/en/v0.17.1/_modules/mmdet3d/datasets/pipelines/transforms_3d.html) | Python 3D pipelines; `RandomFlip3D(sync_2d=...)` syncs point/image flips; "transformation flow" + MoCa ([paper](https://arxiv.org/abs/2012.12741)) for multi-modal consistency | Points ↔ image consistency (relevant to Step 11) | Python-level speed; detection-specific |
 | [FFCV](https://github.com/libffcv/ffcv), [WebDataset](https://github.com/webdataset/webdataset) | Pre-converted format / tar shards | Different trade-offs (conversion step, sequential I/O) | Not re-read in depth; no calibration features known |
 
+## Positioning (confirmed by the user 2026-11-19)
+
+Main angle: **LiDAR ↔ camera consistency** (points, image, depth, K, extrinsics) at native
+speed, built on the camera pipeline. Claims follow measured data; pivot if they don't hold.
+
+**Not yet checked:** LiDAR-side tools (OpenPCDet, Open3D-ML, nuScenes devkit, MMDetection3D
+in depth). Do this pass before Step 11, with the same stop-and-discuss rule.
+
 ## Implications
 
 - **README claim** (draft): "A Rust data loader for RGB-D training where crop, resize and

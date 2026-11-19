@@ -12,7 +12,8 @@ dynamic = ["version"]
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest"]
+# numpy + pillow: tools/gen_synthetic.py and its tests.
+test = ["pytest", "numpy", "pillow"]
 
 [tool.maturin]
 manifest-path = "crates/rigload-py/Cargo.toml"

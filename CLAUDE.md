@@ -46,10 +46,14 @@ Definition of success:
 
 Full details and links: `docs/PRIOR_ART.md` (checked 2026-11-19).
 
-**Our angle:** a native-speed pipeline whose geometric transforms are
-**calibration-aware**: RGB, depth, camera intrinsics (and later LiDAR points and
-extrinsics) stay mutually consistent, with modality-correct resampling (never
-interpolate depth across invalid pixels). Claim only what `bench/results/` shows.
+**Our angle (confirmed by the user 2026-11-19):** a native-speed pipeline whose geometric
+transforms are **calibration-aware**: RGB, depth, camera intrinsics **and LiDAR points +
+camera↔LiDAR extrinsics** stay mutually consistent, with modality-correct resampling
+(never interpolate depth across invalid pixels). **LiDAR ↔ camera consistency is the main
+differentiator**: existing tools are weakest there. Claim only what `bench/results/` shows.
+
+**Data decides the claim:** build the engine first, benchmark it, and if the numbers don't
+support this angle, pivot to a different one with the user instead of forcing the claim.
 
 Step 1 re-verifies this table. If an existing tool already does calibration-aware
 multi-modal augmentation at native speed, **stop and discuss with the user** before
@@ -62,13 +66,15 @@ continuing.
 **In scope (v0.1):**
 
 - RGB (JPEG/PNG) + 16-bit depth PNG + per-sample intrinsics, described by a manifest.
+- LiDAR point clouds (KITTI-style `.bin`) + camera↔LiDAR extrinsics, with augmentations
+  that keep point ↔ image projection consistent (moved from stretch, 2026-11-19).
 - Rust decode, a `rayon` worker pool, bounded prefetch.
 - Transforms: random crop, resize, horizontal flip, color jitter (RGB only), small
   rotation (**OPEN**: now or later), with intrinsics updated.
 - Batch collation into contiguous buffers → NumPy → `torch.from_numpy`.
 - Benchmarks, tests, wheels, docs.
 
-**Stretch:** LiDAR point clouds with consistent augmentation; DLPack; free-threaded
+**Stretch:** DLPack; free-threaded
 Python builds; GPU decode; remote storage (S3); distributed sharding.
 
 **Out of scope:** model research, video, any LLM feature.
@@ -184,6 +190,9 @@ Rules:
 
 Steps 0–5 are fixed. From Step 6 on, each step starts with decisions the user makes.
 
+**Order (decided 2026-11-19):** 0 → 5 (engine) → 6 (camera transforms) → **11 (LiDAR)** →
+7 → 8 → 9 → 10 → 12. Step numbers are kept so references stay valid.
+
 ### Step 0 — Environment (fixed)
 
 - **Ask first:** OS; CPU core count and RAM; GPU access (**OPEN**: own GPU, Colab, cloud,
@@ -215,7 +224,11 @@ Steps 0–5 are fixed. From Step 6 on, each step starts with decisions the user 
     rendered from simple 3D geometry (planes, boxes) with a known K, so pixels
     back-project to real 3D points.
   - Optional sparsity mask on depth (LiDAR-like), 0 = invalid.
-  - `manifest.jsonl`: sample id, RGB path, depth path, K, depth scale.
+  - A LiDAR point cloud per sample sampled from the same geometry (KITTI `.bin` layout),
+    with a known camera↔LiDAR extrinsic, so Step 11 has data from day one. Steps 3–5
+    may ignore it.
+  - `manifest.jsonl`: sample id, RGB path, depth path, LiDAR path, K, extrinsic,
+    depth scale.
   - Sizes: a tiny set (~20 samples) committed in `tests/fixtures/`; a bench set
     (e.g. 10k samples) generated locally, never committed.
 - **Done when:** the same seed produces byte-identical files (hash check in a test).
@@ -226,6 +239,9 @@ Steps 0–5 are fixed. From Step 6 on, each step starts with decisions the user 
   - `bench/baseline_torch.py`: a PyTorch `Dataset` reading the manifest, decoding with
     Pillow/torchvision, applying `transforms.v2` crop + resize + flip + color jitter
     jointly to image and depth, updating K manually; wrapped in a `DataLoader`.
+  - Second baseline: the same pipeline with Albumentations (depth as an
+    `additional_targets` mask, K updated manually), since it is the closest existing
+    tool functionally (see `docs/PRIOR_ART.md`).
   - `bench/bench.py`: one harness that measures §6 metrics for any iterable loader and
     writes a results JSON; `num_workers` sweep.
   - Defaults: batch size 32, output size 640×192 (user may change).
@@ -312,8 +328,10 @@ Steps 0–5 are fixed. From Step 6 on, each step starts with decisions the user 
   where the loader matters most.
 - **Done when:** a GPU-utilization comparison chart is committed.
 
-### Step 11 — LiDAR point clouds (stretch)
+### Step 11 — LiDAR point clouds (core; runs right after Step 6)
 
+- **Before starting:** LiDAR-side prior-art pass (OpenPCDet, MMDetection3D, Open3D-ML,
+  nuScenes devkit) and update `docs/PRIOR_ART.md`; same stop-and-discuss rule as Step 1.
 - **Ask first:** dataset (KITTI raw velodyne `.bin`: float32 x, y, z, intensity,
   **VERIFY**); which augmentations (global rotation, flip, scale).
 - **Tasks:** point-cloud loading; transforms keeping point ↔ image projection consistent

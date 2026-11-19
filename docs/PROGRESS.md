@@ -3,4 +3,5 @@
 | Step | Status | Date | Notes |
 |---|---|---|---|
 | 0 — Environment | Done | 2026-11-19 | Rust 1.100.0 (MSVC), Python 3.13.5 venv, torch 2.14.1+cu130 with CUDA working. See `SETUP.md`. |
-| 1 — Skeleton + prior art | Waiting on CI + positioning sign-off | 2026-11-19 | Workspace, `rigload.hello()` from Rust, CI workflow, dual license, `PRIOR_ART.md`. Local fmt/clippy/test/pytest green; CI not run yet (needs push). |
+| 1 — Skeleton + prior art | Done | 2026-11-19 | Workspace, `rigload.hello()` from Rust, CI (green), dual license, `PRIOR_ART.md`. Positioning confirmed (LiDAR ↔ camera angle). |
+| 2 — Synthetic dataset | Done locally; bench set size open | 2026-11-19 | `tools/gen_synthetic.py`: RGB JPEG, dense + sparse 16-bit depth, LiDAR `.bin`, manifest with K and T_cam_lidar. 20 fixtures (8.1 MB). 35 pytest tests incl. byte-identical regeneration. Caveat for benchmarks: synthetic depth PNGs compress far better than real ones (planes give constant z per row), so depth decode is cheaper than on real data. |
