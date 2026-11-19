@@ -125,8 +125,8 @@ Rules:
 | Transform | RGB | Depth | Intrinsics K = (fx, fy, cx, cy) |
 |---|---|---|---|
 | Crop (x0, y0, w, h) | crop | same crop | cx −= x0, cy −= y0 |
-| Resize (sx, sy) | bilinear / area | nearest, or sparse-aware (**OPEN**) | fx, cx ×= sx; fy, cy ×= sy (**VERIFY** pixel-center convention) |
-| Horizontal flip | flip | flip | cx′ = W − cx (**VERIFY** convention with the test below) |
+| Resize (sx, sy) | bilinear / area | nearest-exact, or sparse-aware (**OPEN**) | fx ×= sx, fy ×= sy; cx′ = (cx + 0.5)·sx − 0.5, cy′ likewise (integer pixel centres; verified against pixel ops in `tests/test_baselines.py`) |
+| Horizontal flip | flip | flip | cx′ = W − 1 − cx, fx stays positive, and 3D data is **mirrored** (X → −X in the camera frame): a flipped image is the projection of the mirrored scene |
 | Small rotation | bilinear, fill 0 | nearest, fill 0 (invalid) | not expressible in K alone: rotate the camera frame about the optical axis, or defer to the LiDAR step |
 | Color jitter | yes | never | unchanged |
 

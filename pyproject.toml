@@ -14,6 +14,12 @@ dependencies = []
 [project.optional-dependencies]
 # numpy + pillow: tools/gen_synthetic.py and its tests.
 test = ["pytest", "numpy", "pillow"]
+# Baselines + harness (bench/). albumentationsx is AGPL-3.0: bench-only, never imported by rigload.
+bench = ["torch", "torchvision", "albumentationsx[headless]", "psutil", "numpy", "pillow"]
+
+[tool.pytest.ini_options]
+# torchvision.io decode is deprecated since 0.29 but still used by the baseline (see bench/baseline_torch.py).
+filterwarnings = ["ignore:The image decoding:DeprecationWarning"]
 
 [tool.maturin]
 manifest-path = "crates/rigload-py/Cargo.toml"

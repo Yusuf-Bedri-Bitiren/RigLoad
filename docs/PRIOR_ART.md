@@ -42,6 +42,19 @@ speed, built on the camera pipeline. Claims follow measured data; pivot if they 
 **Not yet checked:** LiDAR-side tools (OpenPCDet, Open3D-ML, nuScenes devkit, MMDetection3D
 in depth). Do this pass before Step 11, with the same stop-and-discuss rule.
 
+## Findings from building the baselines (Step 3, 2026-11-20)
+
+- **torchvision `tv_tensors.Mask` resize uses legacy `NEAREST` by default** (any other mode
+  is silently coerced to it; `NEAREST_EXACT` is allowed if asked for). Legacy nearest picks
+  pixels up to ~1 source pixel away from where the RGB's bilinear resize and the updated K
+  say they come from. On our fixtures it doubles the median LiDAR-on-depth reprojection error
+  (0.25 % → 0.48 %). Documented by `tests/test_baselines.py`. Evidence that "depth as a mask"
+  is not calibration-correct out of the box.
+- **torchvision.io image decoding is deprecated since 0.29** in favour of TorchCodec.
+- **AlbumentationsX** (the maintained fork) is AGPL-3.0; its `Compose` defaults to
+  `telemetry=True`; its applied-params record has no crop coordinates, so K can't be
+  recovered from a random `Compose`.
+
 ## Implications
 
 - **README claim** (draft): "A Rust data loader for RGB-D training where crop, resize and
