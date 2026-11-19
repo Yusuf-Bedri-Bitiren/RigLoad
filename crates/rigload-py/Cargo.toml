@@ -13,5 +13,7 @@ name = "_rigload"
 crate-type = ["cdylib"]
 
 [dependencies]
+# rust-numpy: hand Rust-owned Vec buffers to Python as NumPy arrays without copying
+numpy = "0.30"
 pyo3 = "0.30"
 rigload-core = { path = "../rigload-core" }

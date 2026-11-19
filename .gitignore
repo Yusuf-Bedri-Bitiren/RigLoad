@@ -11,6 +11,7 @@ dist/
 # built extension copied in by `maturin develop`
 python/rigload/*.pyd
 python/rigload/*.so
+python/rigload/*.pdb
 
 # Data: never commit datasets (licenses, size). Tiny fixtures live in tests/fixtures/.
 data/

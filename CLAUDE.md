@@ -355,7 +355,7 @@ Steps 0–5 are fixed. From Step 6 on, each step starts with decisions the user 
 |---|---|---|
 | GPU source | **Decided:** RTX 3050 Laptop first; university HPC (H100/L40/H200) for scale, with permission | Step 0 |
 | License | **Decided:** MIT OR Apache-2.0 | Step 1 |
-| JPEG decoder | `image` / `zune-jpeg` / `turbojpeg` | Step 4 |
+| JPEG decoder | `image` (= zune-jpeg inside) / `turbojpeg`; gate pending on clean numbers | Step 4 |
 | Depth resize policy | Nearest / sparse-aware pooling | Step 6 |
 | Output dtype and normalization | `uint8` / `float32`; Rust / GPU | Step 7 |
 | Real dataset | KITTI depth completion / nuScenes mini | Step 8 |
