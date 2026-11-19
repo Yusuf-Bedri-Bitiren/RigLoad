@@ -1,0 +1,17 @@
+[package]
+name = "rigload-py"
+description = "PyO3 bindings for rigload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# Python imports this as rigload._rigload (see pyproject.toml module-name).
+name = "_rigload"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.30"
+rigload-core = { path = "../rigload-core" }

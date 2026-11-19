@@ -1,0 +1,21 @@
+# Rust
+target/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+*.egg-info/
+# built extension copied in by `maturin develop`
+python/rigload/*.pyd
+python/rigload/*.so
+
+# Data: never commit datasets (licenses, size). Tiny fixtures live in tests/fixtures/.
+data/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
