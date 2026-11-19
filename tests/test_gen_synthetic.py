@@ -48,6 +48,13 @@ def test_same_seed_is_byte_identical(tmp_path):
     assert a == b
 
 
+def test_resume_fills_in_missing_samples(tmp_path):
+    gen.generate(tmp_path / "full", seed=4, **SMALL)
+    gen.generate(tmp_path / "part", seed=4, n=1, lidar_hres=1.0)
+    gen.generate(tmp_path / "part", seed=4, resume=True, **SMALL)
+    assert hashes(tmp_path / "part") == hashes(tmp_path / "full")
+
+
 def test_different_seed_differs(tmp_path):
     gen.generate(tmp_path / "a", seed=1, **SMALL)
     gen.generate(tmp_path / "b", seed=2, **SMALL)

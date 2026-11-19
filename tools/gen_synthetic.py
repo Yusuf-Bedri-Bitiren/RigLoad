@@ -231,17 +231,10 @@ def encode_depth(z: np.ndarray) -> np.ndarray:
 
 
 def _generate_one(job: tuple) -> dict:
-    out, index, seed, width, height, lidar_hres, jpeg_quality = job
+    out, index, seed, width, height, lidar_hres, jpeg_quality, resume = job
     rng = np.random.default_rng([seed, index])
     scene = _sample_scene(rng, width, height)
     sid = f"{index:06d}"
-
-    rgb, z = render_camera(scene, width, height)
-    dense = np.zeros(z.shape, dtype=np.uint16)
-    valid = np.isfinite(z) & (z <= MAX_DEPTH)
-    dense[valid] = encode_depth(z[valid])
-    points = scan_lidar(scene, lidar_hres)
-    sparse = project_lidar(points, scene["k"], scene["t_cam_lidar"], width, height)
 
     row = {
         "id": sid,
@@ -255,6 +248,17 @@ def _generate_one(job: tuple) -> dict:
         "T_cam_lidar": scene["t_cam_lidar"].tolist(),
         "depth_scale": DEPTH_SCALE,
     }
+    files = [out / row[key] for key in ("rgb", "depth", "depth_sparse", "lidar")]
+    if resume and all(f.is_file() and f.stat().st_size > 0 for f in files):
+        return row  # the row comes from the RNG alone; rendering is skipped
+
+    rgb, z = render_camera(scene, width, height)
+    dense = np.zeros(z.shape, dtype=np.uint16)
+    valid = np.isfinite(z) & (z <= MAX_DEPTH)
+    dense[valid] = encode_depth(z[valid])
+    points = scan_lidar(scene, lidar_hres)
+    sparse = project_lidar(points, scene["k"], scene["t_cam_lidar"], width, height)
+
     # Fixed encoder settings; Pillow writes no timestamps, so output bytes are reproducible.
     Image.fromarray(rgb).save(out / row["rgb"], quality=jpeg_quality, subsampling=0)
     Image.fromarray(dense).save(out / row["depth"])
@@ -265,11 +269,13 @@ def _generate_one(job: tuple) -> dict:
 
 def generate(out: str | Path, n: int, seed: int = 0, width: int = BASE_W,
              height: int = BASE_H, lidar_hres: float = 0.2, jpeg_quality: int = 90,
-             workers: int = 1) -> None:
+             workers: int = 1, resume: bool = False) -> None:
+    """resume=True skips samples whose files all exist and are non-empty (same seed and
+    settings assumed); delete possibly truncated files from an interrupted run first."""
     out = Path(out)
     for sub in ("rgb", "depth", "depth_sparse", "lidar"):
         (out / sub).mkdir(parents=True, exist_ok=True)
-    jobs = [(out, i, seed, width, height, lidar_hres, jpeg_quality) for i in range(n)]
+    jobs = [(out, i, seed, width, height, lidar_hres, jpeg_quality, resume) for i in range(n)]
     if workers > 1:
         with Pool(workers) as pool:
             rows = pool.map(_generate_one, jobs, chunksize=4)
@@ -304,8 +310,11 @@ def main() -> None:
     p.add_argument("--jpeg-quality", type=int, default=90)
     p.add_argument("--workers", type=int, default=os.cpu_count() or 1,
                    help="processes; does not change the output")
+    p.add_argument("--resume", action="store_true",
+                   help="skip samples whose files exist (after an interrupted run)")
     a = p.parse_args()
-    generate(a.out, a.n, a.seed, a.width, a.height, a.lidar_hres, a.jpeg_quality, a.workers)
+    generate(a.out, a.n, a.seed, a.width, a.height, a.lidar_hres, a.jpeg_quality, a.workers,
+             a.resume)
 
 
 if __name__ == "__main__":
