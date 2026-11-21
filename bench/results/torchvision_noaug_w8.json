@@ -1,0 +1,45 @@
+{
+  "env": {
+    "date_utc": "2026-11-21T15:34:57+00:00",
+    "git": "af5d013-dirty",
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+    "cores_physical": 12,
+    "cores_logical": 16,
+    "ram_gib": 15.7,
+    "power_plugged": true,
+    "python": "3.13.5",
+    "torch_threads": 12,
+    "versions": {
+      "torch": "2.14.1+cu130",
+      "torchvision": "0.29.1+cu130",
+      "numpy": "2.5.4",
+      "pillow": "13.0.0",
+      "albumentationsx": "2.6.6",
+      "opencv-python-headless": "5.1.0.95",
+      "psutil": "7.2.2"
+    },
+    "available_ram_gib_at_start": 4.0
+  },
+  "config": {
+    "loader": "torchvision",
+    "augment": false,
+    "manifest": "C:\\CODING\\RigLoad\\data\\synthetic\\manifest.jsonl",
+    "n_samples": 10000,
+    "batch_size": 32,
+    "output_size": null,
+    "warmup_batches": "max(10, 2 * workers)",
+    "timed_batches": 200,
+    "repeats": 7,
+    "seed": 0,
+    "page_cache": "warm (0.82 GB read first)"
+  },
+  "results": [
+    {
+      "workers": 8,
+      "stopped_early": "available RAM fell below 1.5 GB",
+      "repeats_completed": 0,
+      "skipped": "low memory"
+    }
+  ]
+}

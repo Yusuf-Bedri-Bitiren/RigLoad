@@ -1,0 +1,98 @@
+{
+  "env": {
+    "date_utc": "2026-11-20T03:25:05+00:00",
+    "git": "af5d013-dirty",
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+    "cores_physical": 12,
+    "cores_logical": 16,
+    "ram_gib": 15.7,
+    "power_plugged": true,
+    "python": "3.13.5",
+    "torch_threads": 1,
+    "versions": {
+      "torch": "2.14.1+cu130",
+      "torchvision": "0.29.1+cu130",
+      "numpy": "2.5.4",
+      "pillow": "13.0.0",
+      "albumentationsx": "2.6.6",
+      "opencv-python-headless": "5.1.0.95",
+      "psutil": "7.2.2"
+    }
+  },
+  "config": {
+    "manifest": "C:\\CODING\\RigLoad\\data\\synthetic\\manifest.jsonl",
+    "files_per_kind": 300,
+    "passes": 5,
+    "threads": "single (cv2.setNumThreads(0), torch.set_num_threads(1))",
+    "rigload_build": "maturin develop --release"
+  },
+  "results": {
+    "rgb_jpeg": {
+      "rigload": {
+        "ms_per_image_median": 2.7691716665867716,
+        "ms_per_image_min": 2.730946666561067,
+        "ms_per_image_max": 2.780237999977544
+      },
+      "pillow": {
+        "ms_per_image_median": 3.6325186665635556,
+        "ms_per_image_min": 3.5829079999045157,
+        "ms_per_image_max": 3.6861546667447933
+      },
+      "torchvision": {
+        "ms_per_image_median": 2.2154473332921043,
+        "ms_per_image_min": 2.193479999938669,
+        "ms_per_image_max": 2.2465939998316267
+      },
+      "opencv": {
+        "ms_per_image_median": 3.0453416666326425,
+        "ms_per_image_min": 2.9758643333722525,
+        "ms_per_image_max": 3.0775429999145367
+      }
+    },
+    "depth_png16_dense": {
+      "rigload": {
+        "ms_per_image_median": 1.4130429999204352,
+        "ms_per_image_min": 1.3858196667085092,
+        "ms_per_image_max": 1.5209266665624455
+      },
+      "pillow": {
+        "ms_per_image_median": 1.7065619999387611,
+        "ms_per_image_min": 1.6891809999166678,
+        "ms_per_image_max": 1.7331743333488703
+      },
+      "torchvision": {
+        "ms_per_image_median": 2.4051333333288007,
+        "ms_per_image_min": 2.3710813332581893,
+        "ms_per_image_max": 2.428022333382008
+      },
+      "opencv": {
+        "ms_per_image_median": 2.5543876665566736,
+        "ms_per_image_min": 2.507167333193744,
+        "ms_per_image_max": 2.66440233332105
+      }
+    },
+    "depth_png16_sparse": {
+      "rigload": {
+        "ms_per_image_median": 0.52260900013304,
+        "ms_per_image_min": 0.49873433328078437,
+        "ms_per_image_max": 0.5408206665500378
+      },
+      "pillow": {
+        "ms_per_image_median": 0.9663973333469281,
+        "ms_per_image_min": 0.9101853333413601,
+        "ms_per_image_max": 1.0132673332312454
+      },
+      "torchvision": {
+        "ms_per_image_median": 1.7760743334656581,
+        "ms_per_image_min": 1.6535123332869262,
+        "ms_per_image_max": 1.8761530000483617
+      },
+      "opencv": {
+        "ms_per_image_median": 1.8301436667873834,
+        "ms_per_image_min": 1.7340643333348755,
+        "ms_per_image_max": 1.9284476665779948
+      }
+    }
+  }
+}

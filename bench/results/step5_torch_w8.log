@@ -1,0 +1,27 @@
+﻿.\.venv\Scripts\python.exe : Exception in thread Thread-1:
+At line:1 char:460
++ ... igload.log; .\.venv\Scripts\python.exe bench\bench.py --loader torchv ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Exception in thread Thread-1::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Traceback (most recent call last):
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 1043, in _bootstrap_inner
+    self.run()
+    ~~~~~~~~^^
+  File "C:\CODING\RigLoad\bench\bench.py", line 117, in run
+    for p in _tree():
+             ~~~~~^^
+  File "C:\CODING\RigLoad\bench\bench.py", line 85, in _tree
+    return [me, *me.children(recursive=True)]
+                 ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\CODING\RigLoad\.venv\Lib\site-packages\psutil\__init__.py", line 978, in children
+    ppid_map = _ppid_map()
+OSError: [WinError 1455] Bu işlemin tamamlanması için disk belleği dosyası çok küçük
+workers=8: stopped, available RAM fell below 1.5 GB; not trying more workers
+
+torchvision (noaug) -> bench\results\torchvision_noaug_w8.json
+
+| workers | samples/s median (min–max) | batch p50 ms | batch p99 ms | CPU % | peak RSS MB |
+|---:|---:|---:|---:|---:|---:|
+| 8 | skipped: low memory | | | | |
