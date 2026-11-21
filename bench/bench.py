@@ -57,6 +57,29 @@ def make_dataset(name: str, manifest: str, augment: bool, seed: int):
     raise ValueError(f"unknown loader {name!r}")
 
 
+def disable_power_throttling(_worker_id: int | None = None) -> bool:
+    """Opt this process out of Windows 11 power throttling (EcoQoS). Without it, a process
+    with no visible window can be moved to E-cores at low clock speed mid-run (seen on
+    2026-11-21: 1-thread throughput halved, then recovered). Returns True if applied.
+    Also used as the DataLoader `worker_init_fn`, so worker processes opt out too."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    class State(ctypes.Structure):  # PROCESS_POWER_THROTTLING_STATE
+        _fields_ = [("Version", ctypes.c_ulong), ("ControlMask", ctypes.c_ulong),
+                    ("StateMask", ctypes.c_ulong)]
+
+    # Version 1, control EXECUTION_SPEED (0x1), state 0 = never throttle.
+    state = State(1, 0x1, 0)
+    k32 = ctypes.windll.kernel32
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    ok = k32.SetProcessInformation(ctypes.c_void_p(k32.GetCurrentProcess()),
+                                   4,  # ProcessPowerThrottling
+                                   ctypes.byref(state), ctypes.sizeof(state))
+    return bool(ok)
+
+
 def make_dataloader(dataset, workers: int, batch_size: int, seed: int) -> DataLoader:
     return DataLoader(
         dataset,
@@ -66,6 +89,7 @@ def make_dataloader(dataset, workers: int, batch_size: int, seed: int) -> DataLo
         num_workers=workers,
         persistent_workers=workers > 0,
         drop_last=True,
+        worker_init_fn=disable_power_throttling,
     )
 
 
@@ -281,6 +305,7 @@ def main() -> None:
     n_samples = len(read_manifest(a.manifest))
     env = environment()
     env["available_ram_gib_at_start"] = round(psutil.virtual_memory().available / 2**30, 1)
+    env["power_throttling_disabled"] = disable_power_throttling()
     results = []
     for w in workers:
         repeats = []

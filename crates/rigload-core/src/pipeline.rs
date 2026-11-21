@@ -172,47 +172,49 @@ fn produce(
     }
 }
 
+/// Decode a batch in parallel, each worker copying its sample straight into its slot of the
+/// contiguous batch buffers. Collating on one thread afterwards cost ~25 ms per batch
+/// (75 MB of copies and first-touch page faults), more than the parallel decode at 16 threads.
+// shortcut: still one memcpy per sample (decoder buffer -> batch slot); decoding directly into
+// the slot needs a decoder API that writes into a caller's buffer (Step 7 / Step 9 ablation).
 fn load_batch(samples: &[SampleMeta], indices: &[usize]) -> Result<Batch> {
-    let decoded: Vec<Sample> = indices
-        .par_iter()
-        .map(|&i| load_sample(&samples[i]))
-        .collect::<Result<_>>()?; // first error wins; it names its file
-    collate(samples, indices, decoded)
-}
-
-/// Copy the samples into one contiguous buffer per modality.
-// shortcut: one extra memcpy per sample (decode buffer -> batch buffer); Step 7 may decode
-// straight into the batch buffer if this shows up in profiles.
-fn collate(samples: &[SampleMeta], indices: &[usize], decoded: Vec<Sample>) -> Result<Batch> {
-    let (w, h) = (decoded[0].rgb.width, decoded[0].rgb.height);
-    let px = (w * h) as usize;
-    let mut batch = Batch {
-        indices: indices.to_vec(),
-        ids: Vec::with_capacity(indices.len()),
-        height: h,
-        width: w,
-        rgb: Vec::with_capacity(px * 3 * indices.len()),
-        depth: Vec::with_capacity(px * indices.len()),
-        k: Vec::with_capacity(indices.len()),
-    };
-    for (&i, s) in indices.iter().zip(&decoded) {
+    let first = &samples[indices[0]];
+    let (w, h) = (first.width, first.height);
+    // load_sample checks decoded size == manifest size, so equal manifest sizes suffice.
+    for &i in indices {
         let meta = &samples[i];
-        if (s.rgb.width, s.rgb.height) != (w, h) {
+        if (meta.width, meta.height) != (w, h) {
             return Err(Error::Decode {
                 path: meta.rgb.clone(),
                 msg: format!(
                     "sample {} is {}x{}, but its batch is {w}x{h}; without a resize \
                      transform all samples must have the same size",
-                    meta.id, s.rgb.width, s.rgb.height
+                    meta.id, meta.width, meta.height
                 ),
             });
         }
-        batch.ids.push(meta.id.clone());
-        batch.rgb.extend_from_slice(&s.rgb.data);
-        batch.depth.extend_from_slice(&s.depth.data);
-        batch.k.push(s.k);
     }
-    Ok(batch)
+    let px = (w * h) as usize;
+    let mut rgb = vec![0u8; px * 3 * indices.len()];
+    let mut depth = vec![0u16; px * indices.len()];
+    rgb.par_chunks_mut(px * 3)
+        .zip(depth.par_chunks_mut(px))
+        .zip(indices.par_iter())
+        .try_for_each(|((rgb_slot, depth_slot), &i)| {
+            let s: Sample = load_sample(&samples[i])?; // an error names its file
+            rgb_slot.copy_from_slice(&s.rgb.data);
+            depth_slot.copy_from_slice(&s.depth.data);
+            Ok::<_, Error>(())
+        })?;
+    Ok(Batch {
+        indices: indices.to_vec(),
+        ids: indices.iter().map(|&i| samples[i].id.clone()).collect(),
+        height: h,
+        width: w,
+        rgb,
+        depth,
+        k: indices.iter().map(|&i| samples[i].k).collect(),
+    })
 }
 
 fn panic_message(panic: &(dyn Any + Send)) -> String {
@@ -352,6 +354,17 @@ mod tests {
         let err = it.next().unwrap().unwrap_err();
         assert!(err.to_string().contains("missing.jpg"), "{err}");
         assert!(it.next().is_none(), "epoch must end after an error");
+    }
+
+    #[test]
+    fn mixed_sizes_in_a_batch_are_an_error() {
+        let mut samples = fixtures();
+        samples[1].width += 2;
+        let mut c = cfg(4, false);
+        c.shuffle = false;
+        let err = Loader::new(samples, c).unwrap().epoch().next().unwrap();
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("without a resize"), "{msg}");
     }
 
     #[test]

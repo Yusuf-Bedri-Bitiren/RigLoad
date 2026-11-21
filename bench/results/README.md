@@ -72,45 +72,59 @@ stays log-only on this machine; a full run needs the laptop with nothing else op
 ## Step 5: rigload `Loader`, no augmentation (`rigload_noaug.json`, 2026-11-21)
 
 Same data, batch size and protocol as above; `num_threads` rayon threads + 1 producer thread,
-`prefetch=2`, `drop_last=True`. Code: Step 5 working tree on top of `af5d013`.
+`prefetch=2`, `drop_last=True`. Code: Step 5 working tree on top of `af5d013`. Windows power
+throttling disabled for the process (`power_throttling_disabled: true` in the JSON); 3.8 GiB
+RAM available at start (rigload needs < 0.7 GB).
 
 | threads | samples/s | batch p50 ms | batch p99 ms | CPU % | peak RSS MB |
 |---:|---:|---:|---:|---:|---:|
-| 1 | 146 (76–147) | 218 | 288 | 119 | 667 |
-| 2 | 338 (336–339) | 95 | 104 | 189 | 669 |
-| 4 | 513 (472–518) | 63 | 73 | 290 | 673 |
-| 8 | 560 (512–614) | 55 | 69 | 427 | 677 |
-| 12 | 624 (617–627) | 51 | 66 | 525 | 666 |
-| 16 | **686 (665–694)** | 47 | 68 | 578 | 669 |
+| 1 | 185 (181–194) | 171 | 207 | 115 | 603 |
+| 2 | 376 (372–384) | 84 | 103 | 212 | 609 |
+| 4 | 691 (647–697) | 46 | 60 | 401 | 621 |
+| 8 | 990 (961–998) | 32 | 46 | 740 | 638 |
+| 12 | **1006 (943–1084)** | 31 | 54 | 1022 | 654 |
+| 16 | 978 (927–1095) | 29 | 104 | 1139 | 697 |
 
 **Comparison with the torchvision no-augmentation baseline:**
 
-| | rigload, 16 threads | torchvision, 6 workers | torchvision, 8 workers |
+| | rigload, 8 threads | torchvision, 6 workers | torchvision, 8 workers |
 |---|---:|---:|---:|
-| samples/s | **686** | 601 | ~745 (log only) |
-| rigload relative | — | 1.14× faster | **0.92× (8% slower)** |
-| CPU % | 578 | 646 | not measured |
-| samples/s per 100 % CPU | **119** | 93 | not measured |
-| peak RSS | **0.67 GB** | 5.1 GB | > 5.1 GB |
-| batch p99 ms | **68** | 312 | not measured |
+| samples/s | **990** | 601 | ~745 (log only) |
+| rigload relative | — | **1.65×** | **1.33×** |
+| CPU % | 740 | 646 | not measured |
+| peak RSS | **0.64 GB** | 5.1 GB | > 5.1 GB |
+| batch p99 ms | **46** | 312 | not measured |
 
-**Reading the Step 5 numbers honestly:**
+**How we got here: the first run lost, profiling found why.** The first sweep
+(`rigload_noaug_serial_collate.json`) peaked at 686 samples/s at 16 threads, 8% *below*
+torchvision's ~745. Timing inside `load_batch` showed decode taking 19 ms per batch at
+16 threads, and the copy into the batch buffer (`collate`) taking **25 ms on a single thread
+at every thread count**. That copy is 75 MB per batch, most of the cost being first-touch page
+faults on a fresh buffer. The fix: each worker copies its own sample into its slot of the
+batch buffer, so the copy runs in parallel. Same machine, before → after:
 
-- **Raw throughput: rigload does not win yet.** Its best (686) is below torchvision's best
-  on this laptop (~745 at 8 workers). It beats every torchvision setting that completes with
-  full metrics (≤ 6 workers).
-- **What rigload does win:** 7.6× less memory, since threads share one process instead of each
-  worker loading torch. That is also why rigload can use 16 threads where torchvision crashes
-  above 8 workers. It also uses less CPU per sample and has 4.6× lower p99 batch latency.
-- **p50 is higher than torchvision's** (47 vs 8 ms). rigload's consumer is faster than its
-  producer, so it waits for each batch. torchvision's p50 is low because its workers prefetch,
-  while its slow batches show up in p99 instead.
-- **Scaling is uneven.** 1 → 2 threads more than doubles throughput, while 4 → 8 adds only 9%.
-  At 1 thread, 6.8 ms per sample is well above the 4.18 ms decode cost from Step 4, so
-  about 2.7 ms per sample goes somewhere other than decode. Unverified suspects: a fresh
-  ~2.3 MB allocation per sample (Windows zero-fills each new page), the copy in `collate`, and
-  the 12500H's E-cores. Not profiled yet.
-- The 1-thread repeats 4–6 (76–109) are outliers; the other repeats are 146–147.
+| threads | 1 | 4 | 8 | 16 |
+|---|---:|---:|---:|---:|
+| serial collate | 146 | 513 | 560 | 686 |
+| parallel copy | 185 | 691 | 990 | 978 |
+
+**Reading the numbers honestly:**
+
+- **At equal parallelism (8), rigload is 1.33× torchvision's best**, using 8× less memory.
+  The 8-worker torchvision number comes from the log of a run the memory guard stopped
+  (6 of 7 repeats), so its CPU and latency are unknown.
+- **It plateaus at about 1000 samples/s from 8 threads up.** The 12500H has 4 P-cores (8
+  hyper-threads) and 8 slower E-cores, so threads 9–16 add little. 16 threads has a worse p99
+  (104 ms) than 8 (46 ms).
+- **Memory is where processes vs. threads shows most:** about 0.64 GB at every thread count,
+  vs. ~0.65 GB per extra DataLoader worker.
+- **Caveats:** no augmentation yet (Step 6 adds it; torchvision's augmented best is 464).
+  The torchvision runs did not have the power-throttling opt-out, but they ran in a visible
+  console window, which Windows does not throttle. Not re-verified.
+- **A run we discarded:** a sweep launched without a visible window and without the opt-out
+  got 94 samples/s at 1 thread, then jumped mid-run (580 → 1116 at 12 threads). Windows 11
+  power throttling had moved it onto E-cores. `bench.py` now opts out on Windows for itself
+  and its DataLoader workers.
 
 ## Numbers to beat
 
@@ -120,7 +134,7 @@ Same data, batch size and protocol as above; `num_threads` rayon threads + 1 pro
 | with augmentation, torchvision | 464 samples/s | 8 workers | 817 % CPU, 5.9 GB RSS |
 | no augmentation | **~745 samples/s** (median of 6 repeats, log only; re-run pending) | 8 workers | near this laptop's RAM limit |
 | no augmentation, full metrics | 601 samples/s | 6 workers | 646 % CPU, 5.1 GB RSS |
-| *rigload so far, no augmentation* | *686 samples/s* | *16 threads* | *578 % CPU, 0.67 GB RSS* |
+| *rigload (Step 5), no augmentation* | *990 samples/s* | *8 threads* | *740 % CPU, 0.64 GB RSS* |
 
 ## Reading notes
 

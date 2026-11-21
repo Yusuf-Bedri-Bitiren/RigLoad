@@ -1,53 +1,53 @@
-﻿workers=1 repeat=0 146 samples/s
-workers=1 repeat=1 147 samples/s
-workers=1 repeat=2 146 samples/s
-workers=1 repeat=3 146 samples/s
-workers=1 repeat=4 76 samples/s
-workers=1 repeat=5 79 samples/s
-workers=1 repeat=6 109 samples/s
-workers=2 repeat=0 336 samples/s
-workers=2 repeat=1 339 samples/s
-workers=2 repeat=2 339 samples/s
-workers=2 repeat=3 337 samples/s
-workers=2 repeat=4 337 samples/s
-workers=2 repeat=5 338 samples/s
-workers=2 repeat=6 338 samples/s
-workers=4 repeat=0 489 samples/s
-workers=4 repeat=1 512 samples/s
-workers=4 repeat=2 513 samples/s
-workers=4 repeat=3 517 samples/s
-workers=4 repeat=4 515 samples/s
-workers=4 repeat=5 518 samples/s
-workers=4 repeat=6 472 samples/s
-workers=8 repeat=0 540 samples/s
-workers=8 repeat=1 530 samples/s
-workers=8 repeat=2 560 samples/s
-workers=8 repeat=3 584 samples/s
-workers=8 repeat=4 512 samples/s
-workers=8 repeat=5 599 samples/s
-workers=8 repeat=6 614 samples/s
-workers=12 repeat=0 618 samples/s
-workers=12 repeat=1 624 samples/s
-workers=12 repeat=2 627 samples/s
-workers=12 repeat=3 625 samples/s
-workers=12 repeat=4 625 samples/s
-workers=12 repeat=5 622 samples/s
-workers=12 repeat=6 617 samples/s
-workers=16 repeat=0 665 samples/s
-workers=16 repeat=1 677 samples/s
-workers=16 repeat=2 694 samples/s
-workers=16 repeat=3 675 samples/s
-workers=16 repeat=4 688 samples/s
-workers=16 repeat=5 693 samples/s
-workers=16 repeat=6 686 samples/s
+workers=1 repeat=0 185 samples/s
+workers=1 repeat=1 181 samples/s
+workers=1 repeat=2 185 samples/s
+workers=1 repeat=3 188 samples/s
+workers=1 repeat=4 181 samples/s
+workers=1 repeat=5 184 samples/s
+workers=1 repeat=6 194 samples/s
+workers=2 repeat=0 372 samples/s
+workers=2 repeat=1 383 samples/s
+workers=2 repeat=2 376 samples/s
+workers=2 repeat=3 374 samples/s
+workers=2 repeat=4 373 samples/s
+workers=2 repeat=5 379 samples/s
+workers=2 repeat=6 384 samples/s
+workers=4 repeat=0 675 samples/s
+workers=4 repeat=1 697 samples/s
+workers=4 repeat=2 693 samples/s
+workers=4 repeat=3 691 samples/s
+workers=4 repeat=4 647 samples/s
+workers=4 repeat=5 695 samples/s
+workers=4 repeat=6 681 samples/s
+workers=8 repeat=0 991 samples/s
+workers=8 repeat=1 992 samples/s
+workers=8 repeat=2 990 samples/s
+workers=8 repeat=3 965 samples/s
+workers=8 repeat=4 961 samples/s
+workers=8 repeat=5 989 samples/s
+workers=8 repeat=6 998 samples/s
+workers=12 repeat=0 1081 samples/s
+workers=12 repeat=1 1084 samples/s
+workers=12 repeat=2 1033 samples/s
+workers=12 repeat=3 1001 samples/s
+workers=12 repeat=4 983 samples/s
+workers=12 repeat=5 1006 samples/s
+workers=12 repeat=6 943 samples/s
+workers=16 repeat=0 927 samples/s
+workers=16 repeat=1 978 samples/s
+workers=16 repeat=2 953 samples/s
+workers=16 repeat=3 986 samples/s
+workers=16 repeat=4 985 samples/s
+workers=16 repeat=5 1095 samples/s
+workers=16 repeat=6 968 samples/s
 
 rigload (noaug) -> C:\CODING\RigLoad\bench\results\rigload_noaug.json
 
 | workers | samples/s median (min–max) | batch p50 ms | batch p99 ms | CPU % | peak RSS MB |
 |---:|---:|---:|---:|---:|---:|
-| 1 | 146 (76–147) | 218 | 288 | 119 | 667 |
-| 2 | 338 (336–339) | 95 | 104 | 189 | 669 |
-| 4 | 513 (472–518) | 63 | 73 | 290 | 673 |
-| 8 | 560 (512–614) | 55 | 69 | 427 | 677 |
-| 12 | 624 (617–627) | 51 | 66 | 525 | 666 |
-| 16 | 686 (665–694) | 47 | 68 | 578 | 669 |
+| 1 | 185 (181–194) | 171 | 207 | 115 | 603 |
+| 2 | 376 (372–384) | 84 | 103 | 212 | 609 |
+| 4 | 691 (647–697) | 46 | 60 | 401 | 621 |
+| 8 | 990 (961–998) | 32 | 46 | 740 | 638 |
+| 12 | 1006 (943–1084) | 31 | 54 | 1022 | 654 |
+| 16 | 978 (927–1095) | 29 | 104 | 1139 | 697 |
