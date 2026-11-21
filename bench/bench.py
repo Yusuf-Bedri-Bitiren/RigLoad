@@ -69,6 +69,17 @@ def make_dataloader(dataset, workers: int, batch_size: int, seed: int) -> DataLo
     )
 
 
+def make_loader(a, dataset, workers: int):
+    """A fresh loader for one repeat. For rigload, `workers` is the number of Rust threads,
+    all in this process; for the baselines it is DataLoader worker processes."""
+    if a.loader == "rigload":
+        import rigload
+
+        return rigload.Loader(a.manifest, batch_size=a.batch_size, num_threads=workers,
+                              prefetch=2, seed=a.seed, shuffle=True, drop_last=True)
+    return make_dataloader(dataset, workers, a.batch_size, a.seed)
+
+
 def _tree() -> list[psutil.Process]:
     me = psutil.Process()
     return [me, *me.children(recursive=True)]
@@ -182,7 +193,9 @@ def _git() -> str:
     try:
         sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                                       text=True).strip()
-        dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
+        # Untracked files (e.g. new results JSONs) don't change the code under test.
+        dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"],
+                                        cwd=ROOT, text=True)
         return sha + ("-dirty" if dirty.strip() else "")
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
@@ -230,8 +243,11 @@ def markdown_table(results: list[dict]) -> str:
             lines.append(f"| {r['workers']} | skipped: {r['skipped']} | | | | |")
             continue
         m, lo, hi = r["median"], r["min"], r["max"]
+        label = r["workers"]
+        if "stopped_early" in r:
+            label = f"{label} ({r['repeats_completed']} repeats, then low memory)"
         lines.append(
-            f"| {r['workers']} | {m['samples_per_s']:.0f} ({lo['samples_per_s']:.0f}–"
+            f"| {label} | {m['samples_per_s']:.0f} ({lo['samples_per_s']:.0f}–"
             f"{hi['samples_per_s']:.0f}) | {m['batch_p50_ms']:.0f} | {m['batch_p99_ms']:.0f} | "
             f"{m['cpu_percent']:.0f} | {m['peak_rss_mb']:.0f} |"
         )
@@ -240,7 +256,7 @@ def markdown_table(results: list[dict]) -> str:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Benchmark a baseline DataLoader.")
-    p.add_argument("--loader", choices=["torchvision", "albumentations"], required=True)
+    p.add_argument("--loader", choices=["torchvision", "albumentations", "rigload"], required=True)
     p.add_argument("--manifest", default=str(ROOT / "data" / "synthetic" / "manifest.jsonl"))
     p.add_argument("--workers", default="0,2,4,6,8", help="comma-separated num_workers sweep")
     p.add_argument("--batch-size", type=int, default=32)
@@ -254,11 +270,15 @@ def main() -> None:
     a = p.parse_args()
 
     mode = "noaug" if a.no_augment else "aug"
+    if a.loader == "rigload" and not a.no_augment:
+        p.error("rigload augmentation arrives in Step 6; use --no-augment")
     out = Path(a.out or ROOT / "bench" / "results" / f"{a.loader}_{mode}.json")
     workers = [int(w) for w in a.workers.split(",")]
     gb = 0.0 if a.no_warm_cache else warm_page_cache(a.manifest)
 
-    dataset = make_dataset(a.loader, a.manifest, augment=not a.no_augment, seed=a.seed)
+    dataset = None if a.loader == "rigload" else make_dataset(
+        a.loader, a.manifest, augment=not a.no_augment, seed=a.seed)
+    n_samples = len(read_manifest(a.manifest))
     env = environment()
     env["available_ram_gib_at_start"] = round(psutil.virtual_memory().available / 2**30, 1)
     results = []
@@ -268,7 +288,7 @@ def main() -> None:
         warmup = max(a.warmup, 2 * w)
         try:
             for r in range(a.repeats):
-                loader = make_dataloader(dataset, w, a.batch_size, a.seed)
+                loader = make_loader(a, dataset, w)
                 try:
                     repeats.append(measure(loader, a.batch_size, warmup, a.batches))
                 finally:
@@ -278,11 +298,17 @@ def main() -> None:
                       flush=True)
         except MemoryPressure as e:
             print(f"workers={w}: stopped, {e}; not trying more workers", flush=True)
-            results.append({"workers": w, "skipped": "low memory"})
-            write_report(out, env, a, len(dataset), gb, results)
+            # Repeats that finished before the stop are valid measurements: keep them.
+            entry = {"workers": w, "stopped_early": str(e), "repeats_completed": len(repeats)}
+            if repeats:
+                entry.update(repeats=repeats, **summarize(repeats))
+            else:
+                entry["skipped"] = "low memory"
+            results.append(entry)
+            write_report(out, env, a, n_samples, gb, results)
             break
         results.append({"workers": w, "repeats": repeats, **summarize(repeats)})
-        write_report(out, env, a, len(dataset), gb, results)  # keep partial sweeps
+        write_report(out, env, a, n_samples, gb, results)  # keep partial sweeps
 
     print(f"\n{a.loader} ({'noaug' if a.no_augment else 'aug'}) -> {out}\n")
     print(markdown_table(results))

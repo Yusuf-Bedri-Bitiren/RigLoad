@@ -3,10 +3,14 @@
 mod decode;
 mod error;
 mod manifest;
+mod pipeline;
+mod rng;
 
 pub use decode::{Depth, Rgb, Sample, decode_depth, decode_rgb, load_sample};
 pub use error::{Error, Result};
 pub use manifest::{SampleMeta, read_manifest};
+pub use pipeline::{Batch, EpochIter, Loader, LoaderConfig, SharedEpochIter};
+pub use rng::{SplitMix64, epoch_order};
 
 /// Greeting used to check the Rust -> Python path end to end.
 pub fn hello() -> String {

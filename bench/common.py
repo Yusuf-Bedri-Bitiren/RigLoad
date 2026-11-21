@@ -1,7 +1,7 @@
 """Shared by every loader: manifest reading, the per-sample parameter draw, and the K update.
 
-The Rust pipeline (Step 6) must reproduce `draw_params` and `update_k` exactly; tests compare
-against these.
+The Rust pipeline (Step 6) uses its own RNG (SplitMix64), so its draws differ; it must match
+`update_k` exactly and the pixel ops for identical parameters, which tests pass in explicitly.
 
 Pixel convention: centres at integer coordinates, [u, v, 1]^T ~ K @ X_cam (see
 tools/gen_synthetic.py).

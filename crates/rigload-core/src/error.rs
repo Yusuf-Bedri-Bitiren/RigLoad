@@ -17,6 +17,8 @@ pub enum Error {
         path: PathBuf,
         msg: String,
     },
+    /// Bad configuration or a worker thread that panicked: no single file to blame.
+    Loader(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -29,6 +31,7 @@ impl fmt::Display for Error {
                 write!(f, "{} line {line}: {msg}", path.display())
             }
             Error::Decode { path, msg } => write!(f, "{}: {msg}", path.display()),
+            Error::Loader(msg) => write!(f, "{msg}"),
         }
     }
 }
