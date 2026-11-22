@@ -126,6 +126,50 @@ batch buffer, so the copy runs in parallel. Same machine, before → after:
   power throttling had moved it onto E-cores. `bench.py` now opts out on Windows for itself
   and its DataLoader workers.
 
+## Step 6: rigload with augmentation (`rigload_aug.json`, 2026-11-22)
+
+Same transforms and parameter ranges as the baselines: crop (scale 0.8–1) → resize to
+640×192 (RGB antialiased bilinear, depth nearest-exact) → flip (p = 0.5) → brightness,
+contrast, saturation ±0.2, K updated. Plugged in, power throttling disabled.
+
+| threads | samples/s | batch p50 ms | batch p99 ms | CPU % | peak RSS MB |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 145 (144–146) | 220 | 244 | 112 | 548 |
+| 2 | 299 (298–299) | 107 | 114 | 211 | 554 |
+| 4 | 564 (533–576) | 57 | 64 | 400 | 565 |
+| 8 | 811 (801–827) | 40 | 51 | 743 | 577 |
+| 12 | 977 (972–979) | 33 | 44 | 1024 | 590 |
+| 16 | **1121 (1062–1142)** | 28 | 52 | 1380 | 605 |
+
+**Comparison with the augmented baselines (all at their best setting, 8 workers):**
+
+| | rigload, 8 threads | rigload, 16 threads | Albumentations, 8 workers | torchvision, 8 workers |
+|---|---:|---:|---:|---:|
+| samples/s | 811 | **1121** | 532 | 464 |
+| vs Albumentations | 1.52× | **2.11×** | — | 0.87× |
+| vs torchvision | 1.75× | **2.42×** | 1.15× | — |
+| CPU % | 743 | 1380 | 817 | 817 |
+| samples/s per 100 % CPU | **109** | 81 | 65 | 57 |
+| peak RSS | **0.58 GB** | 0.61 GB | 5.5 GB | 5.9 GB |
+| batch p99 ms | **51** | 52 | 439 | 548 |
+
+**Reading the numbers honestly:**
+
+- **At equal parallelism (8), rigload is 1.52× Albumentations and 1.75× torchvision**, with
+  about 10× less memory and 1.7–1.9× the throughput per unit of CPU.
+- **The 16-thread figure (2.11×) is not a like-for-like comparison:** the baselines could not
+  run more than 8 workers on this laptop (memory), so it partly shows what threads allow on a
+  memory-limited machine, not a faster kernel.
+- **The gap is wider with augmentation than without** (1.33× → 1.52–1.75× at 8). The Python
+  baselines pay per-sample interpreter and tensor overhead for every transform step; rigload
+  runs them in one native pass per sample.
+- **Augmented is faster than non-augmented at 16 threads** (1121 vs 978): the 640×192 output
+  is 3.8× smaller than the full-resolution batch, so there is less to copy and hand over.
+- **Correctness for these same parameters** (`tests/test_transforms.py`): K and depth are
+  identical to the torchvision baseline; RGB differs by at most 4 levels (mean 0.095).
+- A first run of this sweep on battery power (`rigload_aug_battery.json`, not used) gave
+  similar numbers from 2 threads up, but 76–125 at 1 thread.
+
 ## Numbers to beat
 
 | setting | best baseline | at | cost |
@@ -135,6 +179,7 @@ batch buffer, so the copy runs in parallel. Same machine, before → after:
 | no augmentation | **~745 samples/s** (median of 6 repeats, log only; re-run pending) | 8 workers | near this laptop's RAM limit |
 | no augmentation, full metrics | 601 samples/s | 6 workers | 646 % CPU, 5.1 GB RSS |
 | *rigload (Step 5), no augmentation* | *990 samples/s* | *8 threads* | *740 % CPU, 0.64 GB RSS* |
+| *rigload (Step 6), with augmentation* | *811 / 1121 samples/s* | *8 / 16 threads* | *743 / 1380 % CPU, 0.58 / 0.61 GB RSS* |
 
 ## Reading notes
 

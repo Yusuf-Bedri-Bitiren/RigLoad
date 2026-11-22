@@ -103,7 +103,7 @@ def test_missing_file_raises_with_path(tmp_path):
 
 
 def test_bad_arguments():
-    with pytest.raises(RuntimeError, match="batch_size"):
+    with pytest.raises(ValueError, match="batch_size"):
         rigload.Loader(MANIFEST, batch_size=0)
     with pytest.raises(OSError):
         rigload.Loader(FIXTURES / "nope.jsonl")

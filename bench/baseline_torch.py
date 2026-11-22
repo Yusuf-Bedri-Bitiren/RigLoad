@@ -45,14 +45,21 @@ class TorchvisionRGBD(Dataset):
         k = np.array(row["K"])
         if self.augment:
             p = draw_params(self.seed, self.epoch, i, row["width"], row["height"])
-            rgb = F.crop(rgb, p["y0"], p["x0"], p["h"], p["w"])
-            depth = F.crop(depth, p["y0"], p["x0"], p["h"], p["w"])
-            rgb = F.resize(rgb, [OUT_H, OUT_W], antialias=True)
-            depth = F.resize(depth, [OUT_H, OUT_W], interpolation=self.depth_interpolation)
-            if p["flip"]:
-                rgb, depth = F.horizontal_flip(rgb), F.horizontal_flip(depth)
-            rgb = F.adjust_brightness(rgb, p["brightness"])
-            rgb = F.adjust_contrast(rgb, p["contrast"])
-            rgb = F.adjust_saturation(rgb, p["saturation"])
-            k = update_k(k, p)
+            rgb, depth, k = augment(rgb, depth, k, p, self.depth_interpolation)
         return {"rgb": rgb, "depth": depth.as_subclass(torch.Tensor), "K": torch.from_numpy(k)}
+
+
+def augment(rgb, depth, k, p: dict,
+            depth_interpolation: InterpolationMode = InterpolationMode.NEAREST_EXACT):
+    """The baseline's transforms for explicit parameters: rgb 3xHxW uint8, depth a 1xHxW
+    `tv_tensors.Mask`. Also used by tests to compare rigload against the same ops."""
+    rgb = F.crop(rgb, p["y0"], p["x0"], p["h"], p["w"])
+    depth = F.crop(depth, p["y0"], p["x0"], p["h"], p["w"])
+    rgb = F.resize(rgb, [OUT_H, OUT_W], antialias=True)
+    depth = F.resize(depth, [OUT_H, OUT_W], interpolation=depth_interpolation)
+    if p["flip"]:
+        rgb, depth = F.horizontal_flip(rgb), F.horizontal_flip(depth)
+    rgb = F.adjust_brightness(rgb, p["brightness"])
+    rgb = F.adjust_contrast(rgb, p["contrast"])
+    rgb = F.adjust_saturation(rgb, p["saturation"])
+    return rgb, depth, update_k(k, p)

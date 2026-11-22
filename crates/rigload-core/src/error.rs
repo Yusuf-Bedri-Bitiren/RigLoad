@@ -17,7 +17,9 @@ pub enum Error {
         path: PathBuf,
         msg: String,
     },
-    /// Bad configuration or a worker thread that panicked: no single file to blame.
+    /// Invalid configuration or parameters (Python: ValueError).
+    Config(String),
+    /// A worker thread that panicked: no single file to blame.
     Loader(String),
 }
 
@@ -31,7 +33,7 @@ impl fmt::Display for Error {
                 write!(f, "{} line {line}: {msg}", path.display())
             }
             Error::Decode { path, msg } => write!(f, "{}: {msg}", path.display()),
-            Error::Loader(msg) => write!(f, "{msg}"),
+            Error::Config(msg) | Error::Loader(msg) => write!(f, "{msg}"),
         }
     }
 }

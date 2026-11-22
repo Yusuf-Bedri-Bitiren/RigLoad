@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e1a9c0fcd386c1cf1fe3246bfc548ecbdf4d1beb9f7e93369cc024fb80e14b88 # shrinks to (w, h, k) = (16, 16, [[50.0, 0.0, 0.0], [0.0, 50.0, 0.0], [0.0, 0.0, 1.0]]), cfg = AugmentConfig { out_width: 2, out_height: 3, crop_scale: (0.05, 0.05), flip_prob: 0.5, jitter: 0.2 }, seed = 0, x = (0.0, 0.0, 0.5)
+cc 40b8c508f44cb8dd0c8994ccb97c822e9bff97e3feaf69eee2eb162fbcfd7465 # shrinks to (w, h, k) = (2, 2, [[50.0, 0.0, 0.0], [0.0, 50.0, 0.0], [0.0, 0.0, 1.0]]), (ow, oh) = (3, 5), seed = 0, z = 0.5

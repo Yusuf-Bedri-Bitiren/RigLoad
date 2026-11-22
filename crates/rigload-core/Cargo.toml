@@ -14,10 +14,14 @@ serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # work-stealing thread pool: decodes a batch's samples in parallel
 rayon = "1"
+# SIMD crop + antialiased resize for RGB (Step 6); its default feature is just `std`
+fast_image_resize = "6"
 
 [dev-dependencies]
 # decode micro-benchmarks; no plots, no rayon
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+# property tests for the calibration-consistency rules (CLAUDE.md §5)
+proptest = "1"
 
 [[bench]]
 name = "decode"

@@ -1,0 +1,53 @@
+workers=1 repeat=0 146 samples/s
+workers=1 repeat=1 145 samples/s
+workers=1 repeat=2 144 samples/s
+workers=1 repeat=3 144 samples/s
+workers=1 repeat=4 145 samples/s
+workers=1 repeat=5 146 samples/s
+workers=1 repeat=6 145 samples/s
+workers=2 repeat=0 298 samples/s
+workers=2 repeat=1 299 samples/s
+workers=2 repeat=2 299 samples/s
+workers=2 repeat=3 299 samples/s
+workers=2 repeat=4 299 samples/s
+workers=2 repeat=5 298 samples/s
+workers=2 repeat=6 299 samples/s
+workers=4 repeat=0 575 samples/s
+workers=4 repeat=1 576 samples/s
+workers=4 repeat=2 533 samples/s
+workers=4 repeat=3 536 samples/s
+workers=4 repeat=4 544 samples/s
+workers=4 repeat=5 564 samples/s
+workers=4 repeat=6 568 samples/s
+workers=8 repeat=0 803 samples/s
+workers=8 repeat=1 801 samples/s
+workers=8 repeat=2 802 samples/s
+workers=8 repeat=3 811 samples/s
+workers=8 repeat=4 823 samples/s
+workers=8 repeat=5 819 samples/s
+workers=8 repeat=6 827 samples/s
+workers=12 repeat=0 979 samples/s
+workers=12 repeat=1 972 samples/s
+workers=12 repeat=2 974 samples/s
+workers=12 repeat=3 975 samples/s
+workers=12 repeat=4 979 samples/s
+workers=12 repeat=5 979 samples/s
+workers=12 repeat=6 977 samples/s
+workers=16 repeat=0 1070 samples/s
+workers=16 repeat=1 1121 samples/s
+workers=16 repeat=2 1113 samples/s
+workers=16 repeat=3 1062 samples/s
+workers=16 repeat=4 1124 samples/s
+workers=16 repeat=5 1142 samples/s
+workers=16 repeat=6 1131 samples/s
+
+rigload (aug) -> C:\CODING\RigLoad\bench\results\rigload_aug.json
+
+| workers | samples/s median (min–max) | batch p50 ms | batch p99 ms | CPU % | peak RSS MB |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 145 (144–146) | 220 | 244 | 112 | 548 |
+| 2 | 299 (298–299) | 107 | 114 | 211 | 554 |
+| 4 | 564 (533–576) | 57 | 64 | 400 | 565 |
+| 8 | 811 (801–827) | 40 | 51 | 743 | 577 |
+| 12 | 977 (972–979) | 33 | 44 | 1024 | 590 |
+| 16 | 1121 (1062–1142) | 28 | 52 | 1380 | 605 |

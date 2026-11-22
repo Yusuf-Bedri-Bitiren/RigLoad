@@ -6,11 +6,11 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods};
+use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::exceptions::{PyIOError, PyIndexError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use rigload_core::{Batch, Error, LoaderConfig, SharedEpochIter};
+use rigload_core::{AugmentConfig, AugmentParams, Batch, Error, LoaderConfig, SharedEpochIter};
 
 fn to_py_err(e: Error) -> PyErr {
     match e {
@@ -30,7 +30,9 @@ struct Loader {
 #[pymethods]
 impl Loader {
     #[new]
-    #[pyo3(signature = (manifest, batch_size=32, num_threads=None, prefetch=2, seed=0, shuffle=true, drop_last=false))]
+    #[pyo3(signature = (manifest, batch_size=32, num_threads=None, prefetch=2, seed=0, shuffle=true,
+                        drop_last=false, augment=false, out_size=(640, 192), crop_scale=(0.8, 1.0),
+                        flip_prob=0.5, jitter=0.2))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -41,6 +43,11 @@ impl Loader {
         seed: u64,
         shuffle: bool,
         drop_last: bool,
+        augment: bool,
+        out_size: (u32, u32),
+        crop_scale: (f64, f64),
+        flip_prob: f64,
+        jitter: f64,
     ) -> PyResult<Self> {
         let num_threads = num_threads
             .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
@@ -54,6 +61,13 @@ impl Loader {
             seed,
             shuffle,
             drop_last,
+            augment: augment.then_some(AugmentConfig {
+                out_width: out_size.0,
+                out_height: out_size.1,
+                crop_scale,
+                flip_prob,
+                jitter,
+            }),
         };
         let inner = rigload_core::Loader::new(samples, cfg).map_err(to_py_err)?;
         Ok(Self { inner })
@@ -177,6 +191,87 @@ fn load_sample(py: Python<'_>, manifest: PathBuf, index: usize) -> PyResult<Boun
     Ok(out)
 }
 
+/// The keys of `bench/common.py:draw_params`, so tests can pass the same dict to both.
+#[derive(FromPyObject)]
+#[pyo3(from_item_all)]
+struct Params {
+    x0: u32,
+    y0: u32,
+    w: u32,
+    h: u32,
+    flip: bool,
+    brightness: f64,
+    contrast: f64,
+    saturation: f64,
+}
+
+/// Apply crop -> resize -> flip -> jitter with explicit parameters to one decoded sample:
+/// {"rgb" (out_h,out_w,3) uint8, "depth" (out_h,out_w) uint16, "K" (3,3)}. For tests and
+/// comparisons; the Loader draws parameters itself. Copies the inputs.
+#[pyfunction]
+#[pyo3(signature = (rgb, depth, k, params, out_size=(640, 192)))]
+fn augment_sample<'py>(
+    py: Python<'py>,
+    rgb: PyReadonlyArray3<'py, u8>,
+    depth: PyReadonlyArray2<'py, u16>,
+    k: [[f64; 3]; 3],
+    params: Params,
+    out_size: (u32, u32),
+) -> PyResult<Bound<'py, PyDict>> {
+    let (rgb, depth) = (rgb.as_array(), depth.as_array());
+    let (h, w, c) = rgb.dim();
+    if c != 3 || depth.dim() != (h, w) {
+        return Err(PyValueError::new_err(format!(
+            "need rgb (H,W,3) and depth (H,W) of the same size, got {:?} and {:?}",
+            (h, w, c),
+            depth.dim()
+        )));
+    }
+    let sample = rigload_core::Sample {
+        rgb: rigload_core::Rgb {
+            width: w as u32,
+            height: h as u32,
+            data: rgb.iter().copied().collect(),
+        },
+        depth: rigload_core::Depth {
+            width: w as u32,
+            height: h as u32,
+            data: depth.iter().copied().collect(),
+        },
+        k,
+    };
+    let p = AugmentParams {
+        x0: params.x0,
+        y0: params.y0,
+        w: params.w,
+        h: params.h,
+        flip: params.flip,
+        brightness: params.brightness,
+        contrast: params.contrast,
+        saturation: params.saturation,
+    };
+    let (ow, oh) = out_size;
+    let px = ow as usize * oh as usize;
+    let (mut rgb_out, mut depth_out) = (vec![0u8; px * 3], vec![0u16; px]);
+    let k2 = py
+        .detach(|| rigload_core::augment_into(sample, &p, ow, oh, &mut rgb_out, &mut depth_out))
+        .map_err(to_py_err)?;
+    let out = PyDict::new(py);
+    out.set_item(
+        "rgb",
+        PyArray1::from_vec(py, rgb_out).reshape([oh as usize, ow as usize, 3])?,
+    )?;
+    out.set_item(
+        "depth",
+        PyArray1::from_vec(py, depth_out).reshape([oh as usize, ow as usize])?,
+    )?;
+    out.set_item(
+        "K",
+        PyArray1::from_vec(py, k2.iter().flatten().copied().collect()).reshape([3, 3])?,
+    )?;
+    Ok(out)
+}
+
 #[pyfunction]
 fn hello() -> String {
     rigload_core::hello()
@@ -190,6 +285,7 @@ fn _rigload(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_rgb, m)?)?;
     m.add_function(wrap_pyfunction!(decode_depth, m)?)?;
     m.add_function(wrap_pyfunction!(load_sample, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_sample, m)?)?;
     m.add_class::<Loader>()?;
     m.add_class::<EpochIterator>()?;
     Ok(())

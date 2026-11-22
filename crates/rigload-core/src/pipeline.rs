@@ -20,6 +20,7 @@ use crate::decode::{Sample, load_sample};
 use crate::error::{Error, Result};
 use crate::manifest::SampleMeta;
 use crate::rng::epoch_order;
+use crate::transform::{AugmentConfig, AugmentParams, augment_into};
 
 #[derive(Debug, Clone)]
 pub struct LoaderConfig {
@@ -30,6 +31,8 @@ pub struct LoaderConfig {
     pub seed: u64,
     pub shuffle: bool,
     pub drop_last: bool,
+    /// None: full-resolution decode only. Some: crop/resize/flip/jitter with K updated.
+    pub augment: Option<AugmentConfig>,
 }
 
 /// One collated batch. Buffers are contiguous, row-major:
@@ -55,9 +58,12 @@ pub struct Loader {
 impl Loader {
     pub fn new(samples: Vec<SampleMeta>, cfg: LoaderConfig) -> Result<Self> {
         if cfg.batch_size == 0 || cfg.num_threads == 0 || cfg.prefetch == 0 {
-            return Err(Error::Loader(
+            return Err(Error::Config(
                 "batch_size, num_threads and prefetch must be >= 1".into(),
             ));
+        }
+        if let Some(a) = &cfg.augment {
+            a.validate()?;
         }
         let pool = ThreadPoolBuilder::new()
             .num_threads(cfg.num_threads)
@@ -162,7 +168,7 @@ fn produce(
             return;
         }
         // `install` runs the closure inside our pool, so par_iter uses its threads.
-        let batch = pool.install(|| load_batch(samples, chunk));
+        let batch = pool.install(|| load_batch(samples, chunk, cfg, epoch));
         let failed = batch.is_err();
         // send blocks while the channel is full (= prefetch); it fails once the consumer
         // has gone away, which is our signal to stop.
@@ -177,11 +183,20 @@ fn produce(
 /// (75 MB of copies and first-touch page faults), more than the parallel decode at 16 threads.
 // shortcut: still one memcpy per sample (decoder buffer -> batch slot); decoding directly into
 // the slot needs a decoder API that writes into a caller's buffer (Step 7 / Step 9 ablation).
-fn load_batch(samples: &[SampleMeta], indices: &[usize]) -> Result<Batch> {
+fn load_batch(
+    samples: &[SampleMeta],
+    indices: &[usize],
+    cfg: &LoaderConfig,
+    epoch: u64,
+) -> Result<Batch> {
     let first = &samples[indices[0]];
-    let (w, h) = (first.width, first.height);
+    let (w, h) = match &cfg.augment {
+        Some(a) => (a.out_width, a.out_height),
+        None => (first.width, first.height),
+    };
     // load_sample checks decoded size == manifest size, so equal manifest sizes suffice.
-    for &i in indices {
+    // With augmentation every sample is resized to the output size, so any size works.
+    for &i in indices.iter().filter(|_| cfg.augment.is_none()) {
         let meta = &samples[i];
         if (meta.width, meta.height) != (w, h) {
             return Err(Error::Decode {
@@ -197,13 +212,35 @@ fn load_batch(samples: &[SampleMeta], indices: &[usize]) -> Result<Batch> {
     let px = (w * h) as usize;
     let mut rgb = vec![0u8; px * 3 * indices.len()];
     let mut depth = vec![0u16; px * indices.len()];
+    let mut k = vec![[[0.0; 3]; 3]; indices.len()];
     rgb.par_chunks_mut(px * 3)
         .zip(depth.par_chunks_mut(px))
+        .zip(k.par_iter_mut())
         .zip(indices.par_iter())
-        .try_for_each(|((rgb_slot, depth_slot), &i)| {
-            let s: Sample = load_sample(&samples[i])?; // an error names its file
-            rgb_slot.copy_from_slice(&s.rgb.data);
-            depth_slot.copy_from_slice(&s.depth.data);
+        .try_for_each(|(((rgb_slot, depth_slot), k_slot), &i)| {
+            let meta = &samples[i];
+            let s: Sample = load_sample(meta)?; // an error names its file
+            *k_slot = match &cfg.augment {
+                Some(a) => {
+                    let p = AugmentParams::draw(
+                        a,
+                        cfg.seed,
+                        epoch,
+                        i as u64,
+                        s.rgb.width,
+                        s.rgb.height,
+                    );
+                    augment_into(s, &p, w, h, rgb_slot, depth_slot).map_err(|e| Error::Decode {
+                        path: meta.rgb.clone(),
+                        msg: e.to_string(),
+                    })?
+                }
+                None => {
+                    rgb_slot.copy_from_slice(&s.rgb.data);
+                    depth_slot.copy_from_slice(&s.depth.data);
+                    s.k
+                }
+            };
             Ok::<_, Error>(())
         })?;
     Ok(Batch {
@@ -213,7 +250,7 @@ fn load_batch(samples: &[SampleMeta], indices: &[usize]) -> Result<Batch> {
         width: w,
         rgb,
         depth,
-        k: indices.iter().map(|&i| samples[i].k).collect(),
+        k,
     })
 }
 
@@ -275,6 +312,7 @@ mod tests {
             seed: 7,
             shuffle: true,
             drop_last,
+            augment: None,
         }
     }
 
@@ -368,7 +406,38 @@ mod tests {
     }
 
     #[test]
+    fn augmented_batches_match_single_sample_transform() {
+        let samples = fixtures();
+        let mut c = cfg(5, false);
+        c.augment = Some(AugmentConfig::default());
+        c.seed = 11;
+        let mut loader = Loader::new(samples.clone(), c.clone()).unwrap();
+        let mut it = loader.epoch();
+        let _ = it.next(); // epoch 0, batch 0
+        let b = it.next().unwrap().unwrap(); // batch 1: indices depend on the shuffle
+        assert_eq!((b.width, b.height), (640, 192));
+        let px = 640 * 192;
+        let a = c.augment.as_ref().unwrap();
+        for (j, &i) in b.indices.iter().enumerate() {
+            let m = &samples[i];
+            let p = AugmentParams::draw(a, 11, 0, i as u64, m.width, m.height);
+            let (mut rgb, mut depth) = (vec![0; px * 3], vec![0; px]);
+            let k =
+                augment_into(load_sample(m).unwrap(), &p, 640, 192, &mut rgb, &mut depth).unwrap();
+            assert_eq!(b.rgb[j * px * 3..(j + 1) * px * 3], rgb[..]);
+            assert_eq!(b.depth[j * px..(j + 1) * px], depth[..]);
+            assert_eq!(b.k[j], k);
+        }
+    }
+
+    #[test]
     fn invalid_config_is_rejected() {
         assert!(Loader::new(fixtures(), cfg(0, false)).is_err());
+        let mut c = cfg(4, false);
+        c.augment = Some(AugmentConfig {
+            out_width: 0,
+            ..AugmentConfig::default()
+        });
+        assert!(Loader::new(fixtures(), c).is_err());
     }
 }

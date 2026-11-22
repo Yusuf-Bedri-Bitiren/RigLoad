@@ -99,8 +99,10 @@ def make_loader(a, dataset, workers: int):
     if a.loader == "rigload":
         import rigload
 
+        # augment defaults (crop scale, 640x192, flip, jitter) equal bench/common.py's
         return rigload.Loader(a.manifest, batch_size=a.batch_size, num_threads=workers,
-                              prefetch=2, seed=a.seed, shuffle=True, drop_last=True)
+                              prefetch=2, seed=a.seed, shuffle=True, drop_last=True,
+                              augment=not a.no_augment, out_size=(OUT_W, OUT_H))
     return make_dataloader(dataset, workers, a.batch_size, a.seed)
 
 
@@ -294,8 +296,6 @@ def main() -> None:
     a = p.parse_args()
 
     mode = "noaug" if a.no_augment else "aug"
-    if a.loader == "rigload" and not a.no_augment:
-        p.error("rigload augmentation arrives in Step 6; use --no-augment")
     out = Path(a.out or ROOT / "bench" / "results" / f"{a.loader}_{mode}.json")
     workers = [int(w) for w in a.workers.split(",")]
     gb = 0.0 if a.no_warm_cache else warm_page_cache(a.manifest)
