@@ -28,6 +28,10 @@ pub struct AugmentConfig {
     pub flip_prob: f64,
     /// Brightness, contrast and saturation factors are drawn from [1 - jitter, 1 + jitter].
     pub jitter: f64,
+    /// 3D only (used when LiDAR is loaded): yaw about the LiDAR z axis in [-yaw_range, yaw_range]
+    /// radians, and a scale about the camera centre drawn from scale_range.
+    pub yaw_range: f64,
+    pub scale_range: (f64, f64),
 }
 
 /// The baselines' values (bench/common.py), so benchmarks compare like with like.
@@ -39,6 +43,9 @@ impl Default for AugmentConfig {
             crop_scale: (0.8, 1.0),
             flip_prob: 0.5,
             jitter: 0.2,
+            // OpenPCDet's KITTI defaults (+-45 deg, 0.95-1.05)
+            yaw_range: std::f64::consts::FRAC_PI_4,
+            scale_range: (0.95, 1.05),
         }
     }
 }
@@ -53,13 +60,18 @@ impl AugmentConfig {
             && lo <= hi
             && hi <= 1.0
             && (0.0..=1.0).contains(&self.flip_prob)
-            && (0.0..1.0).contains(&self.jitter);
+            && (0.0..1.0).contains(&self.jitter)
+            && (0.0..=std::f64::consts::PI).contains(&self.yaw_range)
+            && 0.0 < self.scale_range.0
+            && self.scale_range.0 <= self.scale_range.1
+            && self.scale_range.1.is_finite();
         if ok {
             Ok(())
         } else {
             Err(Error::Config(format!(
                 "invalid augmentation config {self:?}: need output size >= 1, \
-                 0 < crop_scale.0 <= crop_scale.1 <= 1, 0 <= flip_prob <= 1, 0 <= jitter < 1"
+                 0 < crop_scale.0 <= crop_scale.1 <= 1, 0 <= flip_prob <= 1, 0 <= jitter < 1, 0 <= yaw_range <= pi, \
+                 0 < scale_range.0 <= scale_range.1"
             )))
         }
     }
@@ -76,6 +88,9 @@ pub struct AugmentParams {
     pub brightness: f64,
     pub contrast: f64,
     pub saturation: f64,
+    /// 3D augmentation (see lidar.rs): yaw in radians, scale about the camera centre.
+    pub yaw: f64,
+    pub scale: f64,
 }
 
 fn uniform(rng: &mut SplitMix64, lo: f64, hi: f64) -> f64 {
@@ -83,7 +98,8 @@ fn uniform(rng: &mut SplitMix64, lo: f64, hi: f64) -> f64 {
 }
 
 impl AugmentParams {
-    /// Same logic and draw order as `draw_params` in bench/common.py; only the RNG differs.
+    /// Same logic and draw order as `draw_params` in bench/common.py (only the RNG differs),
+    /// then yaw and scale.
     pub fn draw(
         cfg: &AugmentConfig,
         seed: u64,
@@ -95,8 +111,8 @@ impl AugmentParams {
         let mut rng = SplitMix64::from_keys(&[seed, epoch, index]);
         let (ow, oh) = (cfg.out_width as f64, cfg.out_height as f64);
         let h_max = (height as f64).min(width as f64 * oh / ow);
-        let scale = uniform(&mut rng, cfg.crop_scale.0, cfg.crop_scale.1);
-        let h = ((scale * h_max).round() as u32).clamp(1, height);
+        let crop_frac = uniform(&mut rng, cfg.crop_scale.0, cfg.crop_scale.1);
+        let h = ((crop_frac * h_max).round() as u32).clamp(1, height);
         let w = ((h as f64 * ow / oh).round() as u32).clamp(1, width);
         let (lo, hi) = (1.0 - cfg.jitter, 1.0 + cfg.jitter);
         let brightness = uniform(&mut rng, lo, hi);
@@ -111,6 +127,26 @@ impl AugmentParams {
             brightness,
             contrast,
             saturation,
+            yaw: uniform(&mut rng, -cfg.yaw_range, cfg.yaw_range),
+            scale: uniform(&mut rng, cfg.scale_range.0, cfg.scale_range.1),
+        }
+    }
+}
+
+impl AugmentParams {
+    /// No-op parameters for a width x height image (full crop, no flip, factors 1).
+    pub fn identity(width: u32, height: u32) -> Self {
+        Self {
+            x0: 0,
+            y0: 0,
+            w: width,
+            h: height,
+            flip: false,
+            brightness: 1.0,
+            contrast: 1.0,
+            saturation: 1.0,
+            yaw: 0.0,
+            scale: 1.0,
         }
     }
 }
@@ -388,6 +424,8 @@ mod tests {
             brightness: 1.0,
             contrast: 1.0,
             saturation: 1.0,
+            yaw: 0.0,
+            scale: 1.0,
         };
         let (mut out, mut depth) = (vec![0; rgb.len()], vec![0; (w * h) as usize]);
         augment_into(s, &p, w, h, &mut out, &mut depth).unwrap();
@@ -425,6 +463,8 @@ mod tests {
             brightness: 1.0,
             contrast: 1.0,
             saturation: 1.0,
+            yaw: 0.0,
+            scale: 1.0,
         };
         assert!(augment_into(s, &p, 2, 2, &mut [0; 12], &mut [0; 4]).is_err());
         let bad = AugmentConfig {

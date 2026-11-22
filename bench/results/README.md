@@ -170,6 +170,44 @@ contrast, saturation ±0.2, K updated. Plugged in, power throttling disabled.
 - A first run of this sweep on battery power (`rigload_aug_battery.json`, not used) gave
   similar numbers from 2 threads up, but 76–125 at 1 thread.
 
+## Step 11: augmentation + LiDAR (2026-11-22)
+
+Same augmentation as Step 6, plus per sample: read the KITTI `.bin` (~106k points, 1.7 MB),
+flip/yaw/scale the points, update `T_cam_lidar`, re-project sparse depth with K′ and T′.
+torchvision baseline: the same math in NumPy (`bench/common.py`), tested for the same
+consistency (`tests/test_lidar.py`). `--samples 3000` (5.2 GB incl. LiDAR, warmed first, so it
+stays in RAM), 100 timed batches × 7 repeats, plugged in, throttling off. Files:
+`rigload_aug_lidar.json`, `torchvision_aug_lidar.json`.
+
+| workers / threads | rigload samples/s | torchvision samples/s | rigload RSS | torchvision RSS |
+|---:|---:|---:|---:|---:|
+| 0 / 1 | **83** (78–86) | 31 (30–32) | 0.61 GB | 0.82 GB |
+| 2 | **180** (166–195) | 65 (60–68) | 0.61 GB | 2.35 GB |
+| 4 | **339** | stopped: RAM below 1.5 GB | 0.62 GB | – |
+| 8 | **470** (438–515) | – | 0.64 GB | – |
+| 16 | **581** (515–620) | – | 0.66 GB | – |
+
+**Reading the numbers honestly:**
+
+- **At equal parallelism, rigload is 2.7–2.8× torchvision** (1 vs 0, 2 vs 2), at 3.8× less
+  memory and ~3.3× the throughput per unit of CPU (2 vs 2: 192 % vs 229 % CPU).
+- **torchvision could not go past 2 workers in this run:** only 4.5 GB RAM was free at start
+  (other apps open), and the memory guard stopped the 4-worker sweep. On a machine with more
+  free RAM it would scale further, so **581 vs 65 (8.9×) is not a like-for-like speedup**;
+  what it does show is that rigload's threads need ~0.6 GB where torchvision's processes
+  need ~0.75 GB each.
+- **LiDAR costs rigload 42–48 %** of its Step 6 camera-only throughput (470 vs 811 at 8
+  threads, 581 vs 1121 at 16). Each sample's points are 1.7 MB, against ~0.1 MB for its RGB
+  and depth files together.
+- **Two fixes came out of this step's first run** (kept as `*_10k_unfused.json`,
+  `*_10k_partial.json`): (1) the full 10k set is 16.5 GB, more than this laptop's RAM, so it
+  measured the disk, and only rigload was fast enough to be held back; (2) points went through
+  5 passes per sample (read, parse copy, transform, project, concat copy). Reading each `.bin`
+  straight into its slice of the batch buffer removed two passes and all per-sample buffers.
+  Together: 194 → 470 samples/s at 8 threads, 275 → 581 at 16.
+- The NumPy projection was checked for a faster form (`np.minimum.at`): identical output, no
+  faster, so the baseline is not handicapped by it.
+
 ## Numbers to beat
 
 | setting | best baseline | at | cost |
@@ -180,6 +218,8 @@ contrast, saturation ±0.2, K updated. Plugged in, power throttling disabled.
 | no augmentation, full metrics | 601 samples/s | 6 workers | 646 % CPU, 5.1 GB RSS |
 | *rigload (Step 5), no augmentation* | *990 samples/s* | *8 threads* | *740 % CPU, 0.64 GB RSS* |
 | *rigload (Step 6), with augmentation* | *811 / 1121 samples/s* | *8 / 16 threads* | *743 / 1380 % CPU, 0.58 / 0.61 GB RSS* |
+| with augmentation + LiDAR, torchvision | 65 samples/s | 2 workers (4 stopped: RAM) | 229 % CPU, 2.35 GB RSS |
+| *rigload (Step 11), augmentation + LiDAR* | *180 / 470 / 581 samples/s* | *2 / 8 / 16 threads* | *0.61–0.66 GB RSS* |
 
 ## Reading notes
 

@@ -30,7 +30,9 @@ def augment_sample(
 
 class EpochIterator(Iterator[dict[str, Any]]):
     """One epoch of batches: {"rgb": (B, H, W, 3) uint8, "depth": (B, H, W) uint16,
-    "K": (B, 3, 3) float64, "ids": list[str], "indices": (B,) int64}."""
+    "K": (B, 3, 3) float64, "depth_scale": (B,) float64, "ids": list[str],
+    "indices": (B,) int64}; with lidar=True also "depth_sparse" (B, H, W) uint16,
+    "points" (N, 4) float32, "point_offsets" (B + 1,) int64, "T_cam_lidar" (B, 4, 4)."""
 
     def __iter__(self) -> EpochIterator: ...
     def __next__(self) -> dict[str, Any]: ...
@@ -43,7 +45,16 @@ class Loader:
     output aspect) -> resize to out_size (width, height) -> horizontal flip with `flip_prob`
     -> brightness/contrast/saturation in [1 - jitter, 1 + jitter], drawn per sample from
     (seed, epoch, index). K is updated to match; depth is resized nearest-exact. A flipped
-    sample is the projection of the mirrored scene (X -> -X in the camera frame)."""
+    sample is the projection of the mirrored scene (X -> -X in the camera frame).
+
+    lidar=True: also load each sample's points (manifest `lidar`, `T_cam_lidar`). With
+    augment=True they get a yaw in [-yaw_range, yaw_range] about the LiDAR z axis and a scale
+    in `scale_range` about the camera centre, plus the image's flip as a mirror. Outputs are
+    kept consistent: projecting batch["points"] with batch["T_cam_lidar"] and batch["K"]
+    lands on the augmented image, at depth matching batch["depth"] / batch["depth_scale"].
+    Batches then also hold "depth_sparse" (the points re-projected, nearest wins),
+    "points" (N, 4) float32 for all samples, and "point_offsets" (B + 1,): sample j owns
+    rows point_offsets[j]:point_offsets[j + 1]."""
 
     def __init__(
         self,
@@ -59,6 +70,9 @@ class Loader:
         crop_scale: tuple[float, float] = (0.8, 1.0),
         flip_prob: float = 0.5,
         jitter: float = 0.2,
+        lidar: bool = False,
+        yaw_range: float = 0.7853981633974483,
+        scale_range: tuple[float, float] = (0.95, 1.05),
     ) -> None: ...
     def __len__(self) -> int: ...
     def __iter__(self) -> EpochIterator: ...

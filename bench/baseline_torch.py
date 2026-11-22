@@ -19,7 +19,15 @@ from torchvision.io import decode_jpeg, decode_png, read_file
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.v2 import functional as F
 
-from common import OUT_H, OUT_W, draw_params, read_manifest, update_k
+from common import (
+    OUT_H,
+    OUT_W,
+    augment_lidar,
+    draw_params,
+    project_sparse,
+    read_manifest,
+    update_k,
+)
 
 # shortcut: torchvision.io image decode is deprecated since 0.29 (moving to TorchCodec) but still
 # the fastest torch-native path; revisit at Step 9 or when it's removed.
@@ -28,11 +36,12 @@ warnings.filterwarnings("ignore", message="The image decoding", category=Depreca
 
 class TorchvisionRGBD(Dataset):
     def __init__(self, manifest: str, seed: int = 0, epoch: int = 0, augment: bool = True,
-                 depth_interpolation: InterpolationMode = InterpolationMode.NEAREST_EXACT):
+                 depth_interpolation: InterpolationMode = InterpolationMode.NEAREST_EXACT,
+                 lidar: bool = False):
         # Mask resize defaults to legacy NEAREST, which is offset from the RGB's bilinear
         # resize (see docs/PRIOR_ART.md); NEAREST_EXACT matches the half-pixel convention.
         self.rows = read_manifest(manifest)
-        self.seed, self.epoch, self.augment = seed, epoch, augment
+        self.seed, self.epoch, self.augment, self.lidar = seed, epoch, augment, lidar
         self.depth_interpolation = depth_interpolation
 
     def __len__(self) -> int:
@@ -43,10 +52,34 @@ class TorchvisionRGBD(Dataset):
         rgb = decode_jpeg(read_file(row["rgb"]))  # 3xHxW uint8
         depth = tv_tensors.Mask(decode_png(read_file(row["depth"])))  # 1xHxW uint16
         k = np.array(row["K"])
+        p = None
         if self.augment:
             p = draw_params(self.seed, self.epoch, i, row["width"], row["height"])
             rgb, depth, k = augment(rgb, depth, k, p, self.depth_interpolation)
-        return {"rgb": rgb, "depth": depth.as_subclass(torch.Tensor), "K": torch.from_numpy(k)}
+        out = {"rgb": rgb, "depth": depth.as_subclass(torch.Tensor), "K": torch.from_numpy(k)}
+        if self.lidar:
+            points = np.fromfile(row["lidar"], dtype="<f4").reshape(-1, 4)
+            t = np.array(row["T_cam_lidar"])
+            scale = 1.0
+            if p is not None:
+                points, t = augment_lidar(points, t, p)
+                scale = p["scale"]
+            depth_scale = row["depth_scale"] / scale
+            h, w = out["depth"].shape[-2:]
+            out["depth_sparse"] = torch.from_numpy(project_sparse(points, t, k, w, h,
+                                                                  depth_scale))
+            out.update(points=torch.from_numpy(points), T_cam_lidar=torch.from_numpy(t),
+                       depth_scale=torch.tensor(depth_scale))
+        return out
+
+
+def collate_lidar(samples: list[dict]) -> dict:
+    """Stack fixed-size fields; concatenate points with offsets, like rigload's batches."""
+    out = {key: torch.stack([s[key] for s in samples]) for key in samples[0] if key != "points"}
+    sizes = torch.tensor([0] + [len(s["points"]) for s in samples])
+    out["points"] = torch.cat([s["points"] for s in samples])
+    out["point_offsets"] = torch.cumsum(sizes, 0)
+    return out
 
 
 def augment(rgb, depth, k, p: dict,

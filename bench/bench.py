@@ -5,7 +5,7 @@ sweeps DataLoader num_workers and writes one results JSON with the environment.
 
 Protocol (CLAUDE.md section 6): fresh loader per repeat; max(`--warmup`, 2 * workers) batches
 discarded (covers worker start-up); `--batches` timed; >= 5 repeats; median and min/max reported; page cache
-warmed first unless --no-warm-cache.
+warmed first unless --no-warm-cache (pass --samples so the data fits in RAM, or it is not).
 
 Metrics:
     samples_per_s   timed batches * batch size / wall time
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import itertools
 import json
 import platform
 import subprocess
@@ -45,11 +46,11 @@ sys.path.insert(0, str(ROOT / "bench"))
 from common import OUT_H, OUT_W, read_manifest  # noqa: E402
 
 
-def make_dataset(name: str, manifest: str, augment: bool, seed: int):
+def make_dataset(name: str, manifest: str, augment: bool, seed: int, lidar: bool = False):
     if name == "torchvision":
         from baseline_torch import TorchvisionRGBD
 
-        return TorchvisionRGBD(manifest, seed=seed, augment=augment)
+        return TorchvisionRGBD(manifest, seed=seed, augment=augment, lidar=lidar)
     if name == "albumentations":
         from baseline_albu import AlbumentationsRGBD
 
@@ -81,6 +82,9 @@ def disable_power_throttling(_worker_id: int | None = None) -> bool:
 
 
 def make_dataloader(dataset, workers: int, batch_size: int, seed: int) -> DataLoader:
+    collate = None
+    if getattr(dataset, "lidar", False):
+        from baseline_torch import collate_lidar as collate
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -90,6 +94,9 @@ def make_dataloader(dataset, workers: int, batch_size: int, seed: int) -> DataLo
         persistent_workers=workers > 0,
         drop_last=True,
         worker_init_fn=disable_power_throttling,
+        collate_fn=collate,
+        # a worker that dies at spawn (WinError 1455, pagefile full) otherwise hangs the run
+        timeout=300 if workers > 0 else 0,
     )
 
 
@@ -102,7 +109,8 @@ def make_loader(a, dataset, workers: int):
         # augment defaults (crop scale, 640x192, flip, jitter) equal bench/common.py's
         return rigload.Loader(a.manifest, batch_size=a.batch_size, num_threads=workers,
                               prefetch=2, seed=a.seed, shuffle=True, drop_last=True,
-                              augment=not a.no_augment, out_size=(OUT_W, OUT_H))
+                              augment=not a.no_augment, out_size=(OUT_W, OUT_H),
+                              lidar=a.lidar)
     return make_dataloader(dataset, workers, a.batch_size, a.seed)
 
 
@@ -161,11 +169,13 @@ class _PeakRss(threading.Thread):
 
 
 def measure(iterable, batch_size: int, warmup: int, batches: int) -> dict:
-    """Time `batches` batches from `iterable` after discarding `warmup` batches."""
+    """Time `batches` batches from `iterable` after discarding `warmup` batches. Runs into
+    further epochs when one epoch is shorter, so the dataset can be small enough to stay in
+    the page cache (epoch boundaries are then part of the timing, for every loader)."""
     rss = _PeakRss()
     rss.start()
     try:
-        it = iter(iterable)
+        it = itertools.chain.from_iterable(itertools.repeat(iterable))
         for _ in range(warmup):
             next(it)
             rss.check()
@@ -193,11 +203,11 @@ def measure(iterable, batch_size: int, warmup: int, batches: int) -> dict:
     }
 
 
-def warm_page_cache(manifest: str) -> float:
-    """Read every RGB and depth file once so runs see a warm page cache. Returns GB read."""
+def warm_page_cache(manifest: str, lidar: bool) -> float:
+    """Read every file the run uses once so runs see a warm page cache. Returns GB read."""
     total = 0
     for row in read_manifest(manifest):
-        for key in ("rgb", "depth"):
+        for key in ("rgb", "depth") + (("lidar",) if lidar else ()):
             total += len(Path(row[key]).read_bytes())
     return total / 1e9
 
@@ -291,17 +301,30 @@ def main() -> None:
     p.add_argument("--repeats", type=int, default=5)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--no-augment", action="store_true", help="decode + collate only")
+    p.add_argument("--lidar", action="store_true",
+                   help="also load points, augment them and re-project sparse depth")
     p.add_argument("--no-warm-cache", action="store_true")
+    p.add_argument("--samples", type=int,
+                   help="use only the manifest's first N rows (so the data fits in RAM; the "
+                        "10k LiDAR set is ~16 GB)")
     p.add_argument("--out", help="results JSON (default bench/results/<loader>_<mode>.json)")
     a = p.parse_args()
 
-    mode = "noaug" if a.no_augment else "aug"
+    mode = ("noaug" if a.no_augment else "aug") + ("_lidar" if a.lidar else "")
+    if a.lidar and a.loader == "albumentations":
+        p.error("--lidar is implemented for the torchvision baseline and rigload only")
     out = Path(a.out or ROOT / "bench" / "results" / f"{a.loader}_{mode}.json")
     workers = [int(w) for w in a.workers.split(",")]
-    gb = 0.0 if a.no_warm_cache else warm_page_cache(a.manifest)
+    if a.samples:
+        src = Path(a.manifest)
+        sub = src.with_name(f"{src.stem}_first{a.samples}.jsonl")  # next to it: relative paths
+        rows = src.read_text(encoding="utf-8").splitlines()[:a.samples]
+        sub.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        a.manifest = str(sub)
+    gb = 0.0 if a.no_warm_cache else warm_page_cache(a.manifest, a.lidar)
 
     dataset = None if a.loader == "rigload" else make_dataset(
-        a.loader, a.manifest, augment=not a.no_augment, seed=a.seed)
+        a.loader, a.manifest, augment=not a.no_augment, seed=a.seed, lidar=a.lidar)
     n_samples = len(read_manifest(a.manifest))
     env = environment()
     env["available_ram_gib_at_start"] = round(psutil.virtual_memory().available / 2**30, 1)

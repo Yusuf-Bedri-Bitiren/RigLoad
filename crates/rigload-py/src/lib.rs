@@ -32,7 +32,8 @@ impl Loader {
     #[new]
     #[pyo3(signature = (manifest, batch_size=32, num_threads=None, prefetch=2, seed=0, shuffle=true,
                         drop_last=false, augment=false, out_size=(640, 192), crop_scale=(0.8, 1.0),
-                        flip_prob=0.5, jitter=0.2))]
+                        flip_prob=0.5, jitter=0.2, lidar=false,
+                        yaw_range=std::f64::consts::FRAC_PI_4, scale_range=(0.95, 1.05)))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -48,6 +49,9 @@ impl Loader {
         crop_scale: (f64, f64),
         flip_prob: f64,
         jitter: f64,
+        lidar: bool,
+        yaw_range: f64,
+        scale_range: (f64, f64),
     ) -> PyResult<Self> {
         let num_threads = num_threads
             .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
@@ -67,7 +71,10 @@ impl Loader {
                 crop_scale,
                 flip_prob,
                 jitter,
+                yaw_range,
+                scale_range,
             }),
+            lidar,
         };
         let inner = rigload_core::Loader::new(samples, cfg).map_err(to_py_err)?;
         Ok(Self { inner })
@@ -116,7 +123,9 @@ impl EpochIterator {
 }
 
 /// {"rgb": (B,H,W,3) uint8, "depth": (B,H,W) uint16, "K": (B,3,3) float64,
-///  "ids": list[str], "indices": (B,) int64}. Image buffers are moved, not copied.
+///  "depth_scale": (B,) float64, "ids": list[str], "indices": (B,) int64}, and with LiDAR
+/// "depth_sparse": (B,H,W) uint16, "points": (N,4) float32, "point_offsets": (B+1,) int64,
+/// "T_cam_lidar": (B,4,4) float64. Large buffers are moved, not copied.
 fn batch_dict(py: Python<'_>, b: Batch) -> PyResult<Bound<'_, PyDict>> {
     let (n, h, w) = (b.indices.len(), b.height as usize, b.width as usize);
     let k: Vec<f64> = b.k.iter().flatten().flatten().copied().collect();
@@ -127,6 +136,22 @@ fn batch_dict(py: Python<'_>, b: Batch) -> PyResult<Bound<'_, PyDict>> {
     out.set_item("K", PyArray1::from_vec(py, k).reshape([n, 3, 3])?)?;
     out.set_item("ids", b.ids)?;
     out.set_item("indices", PyArray1::from_vec(py, indices))?;
+    out.set_item("depth_scale", PyArray1::from_vec(py, b.depth_scale))?;
+    if !b.point_offsets.is_empty() {
+        let n_points = b.points.len() / 4;
+        let offsets: Vec<i64> = b.point_offsets.iter().map(|&o| o as i64).collect();
+        let t: Vec<f64> = b.t_cam_lidar.iter().flatten().flatten().copied().collect();
+        out.set_item(
+            "depth_sparse",
+            PyArray1::from_vec(py, b.depth_sparse).reshape([n, h, w])?,
+        )?;
+        out.set_item(
+            "points",
+            PyArray1::from_vec(py, b.points).reshape([n_points, 4])?,
+        )?;
+        out.set_item("point_offsets", PyArray1::from_vec(py, offsets))?;
+        out.set_item("T_cam_lidar", PyArray1::from_vec(py, t).reshape([n, 4, 4])?)?;
+    }
     Ok(out)
 }
 
@@ -249,6 +274,8 @@ fn augment_sample<'py>(
         brightness: params.brightness,
         contrast: params.contrast,
         saturation: params.saturation,
+        yaw: 0.0,
+        scale: 1.0,
     };
     let (ow, oh) = out_size;
     let px = ow as usize * oh as usize;

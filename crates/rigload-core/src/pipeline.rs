@@ -18,9 +18,12 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::decode::{Sample, load_sample};
 use crate::error::{Error, Result};
+use crate::lidar::{
+    Mat4, augment_lidar, point_count, project_sparse, read_points_into, transform_points,
+};
 use crate::manifest::SampleMeta;
 use crate::rng::epoch_order;
-use crate::transform::{AugmentConfig, AugmentParams, augment_into};
+use crate::transform::{AugmentConfig, AugmentParams, Intrinsics, augment_into};
 
 #[derive(Debug, Clone)]
 pub struct LoaderConfig {
@@ -33,10 +36,16 @@ pub struct LoaderConfig {
     pub drop_last: bool,
     /// None: full-resolution decode only. Some: crop/resize/flip/jitter with K updated.
     pub augment: Option<AugmentConfig>,
+    /// Load LiDAR points, apply the 3D augmentation (yaw, scale, flip mirror) and re-project
+    /// them into a sparse depth image. Needs `lidar` and `T_cam_lidar` in the manifest.
+    pub lidar: bool,
 }
 
 /// One collated batch. Buffers are contiguous, row-major:
-/// rgb `[B, H, W, 3]`, depth `[B, H, W]`, k `[B][3][3]`.
+/// rgb `[B, H, W, 3]`, depth `[B, H, W]`, k `[B][3][3]`, depth_scale `[B]`.
+/// With LiDAR: depth_sparse `[B, H, W]`, points `[N, 4]` (x, y, z, intensity, LiDAR frame)
+/// for all samples back to back, sample j owning rows `point_offsets[j]..point_offsets[j+1]`,
+/// and t_cam_lidar `[B][4][4]`. Otherwise those are empty.
 #[derive(Debug)]
 pub struct Batch {
     pub indices: Vec<usize>,
@@ -45,7 +54,13 @@ pub struct Batch {
     pub width: u32,
     pub rgb: Vec<u8>,
     pub depth: Vec<u16>,
-    pub k: Vec<[[f64; 3]; 3]>,
+    pub k: Vec<Intrinsics>,
+    /// Metres = stored depth / depth_scale (per sample: the 3D scale augmentation changes it).
+    pub depth_scale: Vec<f64>,
+    pub depth_sparse: Vec<u16>,
+    pub points: Vec<f32>,
+    pub point_offsets: Vec<usize>,
+    pub t_cam_lidar: Vec<Mat4>,
 }
 
 pub struct Loader {
@@ -178,7 +193,7 @@ fn produce(
     }
 }
 
-/// Decode a batch in parallel, each worker copying its sample straight into its slot of the
+/// Decode a batch in parallel, each worker writing its sample straight into its slot of the
 /// contiguous batch buffers. Collating on one thread afterwards cost ~25 ms per batch
 /// (75 MB of copies and first-touch page faults), more than the parallel decode at 16 threads.
 // shortcut: still one memcpy per sample (decoder buffer -> batch slot); decoding directly into
@@ -209,40 +224,59 @@ fn load_batch(
             });
         }
     }
-    let px = (w * h) as usize;
-    let mut rgb = vec![0u8; px * 3 * indices.len()];
-    let mut depth = vec![0u16; px * indices.len()];
-    let mut k = vec![[[0.0; 3]; 3]; indices.len()];
-    rgb.par_chunks_mut(px * 3)
+    let (n, px) = (indices.len(), (w * h) as usize);
+    let mut rgb = vec![0u8; px * 3 * n];
+    let mut depth = vec![0u16; px * n];
+    // Points: sized from the file sizes first, so each worker reads its sample's points
+    // straight into its slice of the batch buffer (no per-sample buffer, no concat copy).
+    let point_lens: Vec<usize> = if cfg.lidar {
+        indices
+            .par_iter()
+            .map(|&i| {
+                let meta = &samples[i];
+                let path = meta.lidar.as_ref().filter(|_| meta.t_cam_lidar.is_some());
+                Ok(point_count(path.ok_or_else(|| missing_lidar(meta))?)? * 4)
+            })
+            .collect::<Result<_>>()?
+    } else {
+        Vec::new()
+    };
+    let mut points = vec![0f32; point_lens.iter().sum()];
+    let mut depth_sparse = vec![0u16; if cfg.lidar { px * n } else { 0 }];
+    let mut lidar_slots: Vec<Option<LidarSlots>> = (0..n).map(|_| None).collect();
+    let mut rest = points.as_mut_slice();
+    for ((slot, sparse), &len) in lidar_slots
+        .iter_mut()
+        .zip(depth_sparse.chunks_mut(px))
+        .zip(&point_lens)
+    {
+        let (head, tail) = std::mem::take(&mut rest).split_at_mut(len);
+        *slot = Some((sparse, head));
+        rest = tail;
+    }
+    let outs: Vec<SampleOut> = rgb
+        .par_chunks_mut(px * 3)
         .zip(depth.par_chunks_mut(px))
-        .zip(k.par_iter_mut())
+        .zip(lidar_slots.into_par_iter())
         .zip(indices.par_iter())
-        .try_for_each(|(((rgb_slot, depth_slot), k_slot), &i)| {
-            let meta = &samples[i];
-            let s: Sample = load_sample(meta)?; // an error names its file
-            *k_slot = match &cfg.augment {
-                Some(a) => {
-                    let p = AugmentParams::draw(
-                        a,
-                        cfg.seed,
-                        epoch,
-                        i as u64,
-                        s.rgb.width,
-                        s.rgb.height,
-                    );
-                    augment_into(s, &p, w, h, rgb_slot, depth_slot).map_err(|e| Error::Decode {
-                        path: meta.rgb.clone(),
-                        msg: e.to_string(),
-                    })?
-                }
-                None => {
-                    rgb_slot.copy_from_slice(&s.rgb.data);
-                    depth_slot.copy_from_slice(&s.depth.data);
-                    s.k
-                }
-            };
-            Ok::<_, Error>(())
-        })?;
+        .map(|(((rgb_slot, depth_slot), lidar_slot), &i)| {
+            load_one(
+                &samples[i],
+                i,
+                cfg,
+                epoch,
+                (w, h),
+                (rgb_slot, depth_slot, lidar_slot),
+            )
+        })
+        .collect::<Result<_>>()?; // first error wins; it names its file
+    let mut point_offsets = Vec::new();
+    if cfg.lidar {
+        point_offsets.push(0);
+        for len in &point_lens {
+            point_offsets.push(point_offsets.last().unwrap() + len / 4);
+        }
+    }
     Ok(Batch {
         indices: indices.to_vec(),
         ids: indices.iter().map(|&i| samples[i].id.clone()).collect(),
@@ -250,7 +284,80 @@ fn load_batch(
         width: w,
         rgb,
         depth,
+        k: outs.iter().map(|o| o.k).collect(),
+        depth_scale: outs.iter().map(|o| o.depth_scale).collect(),
+        depth_sparse,
+        points,
+        point_offsets,
+        t_cam_lidar: outs.iter().filter_map(|o| o.t_cam_lidar).collect(),
+    })
+}
+
+/// A sample's outputs that don't live in a fixed-size batch slot.
+struct SampleOut {
+    k: Intrinsics,
+    depth_scale: f64,
+    t_cam_lidar: Option<Mat4>,
+}
+
+/// A sample's sparse depth image and its points, inside the batch buffers.
+type LidarSlots<'a> = (&'a mut [u16], &'a mut [f32]);
+type Slots<'a> = (&'a mut [u8], &'a mut [u16], Option<LidarSlots<'a>>);
+
+fn missing_lidar(meta: &SampleMeta) -> Error {
+    Error::Config(format!(
+        "sample {} has no lidar path or T_cam_lidar in the manifest, but the loader was asked \
+         for LiDAR",
+        meta.id
+    ))
+}
+
+fn load_one(
+    meta: &SampleMeta,
+    index: usize,
+    cfg: &LoaderConfig,
+    epoch: u64,
+    (w, h): (u32, u32),
+    (rgb_slot, depth_slot, lidar_slot): Slots<'_>,
+) -> Result<SampleOut> {
+    let s: Sample = load_sample(meta)?; // an error names its file
+    let (sw, sh) = (s.rgb.width, s.rgb.height);
+    let mut p = match &cfg.augment {
+        Some(a) => AugmentParams::draw(a, cfg.seed, epoch, index as u64, sw, sh),
+        None => AugmentParams::identity(sw, sh),
+    };
+    if !cfg.lidar {
+        (p.yaw, p.scale) = (0.0, 1.0); // 3D augmentation only applies with points
+    }
+    let k = if cfg.augment.is_some() {
+        augment_into(s, &p, w, h, rgb_slot, depth_slot).map_err(|e| Error::Decode {
+            path: meta.rgb.clone(),
+            msg: e.to_string(),
+        })?
+    } else {
+        rgb_slot.copy_from_slice(&s.rgb.data);
+        depth_slot.copy_from_slice(&s.depth.data);
+        s.k
+    };
+    // Metric depth scales by s; the stored values stay, so the scale factor changes instead.
+    let depth_scale = meta.depth_scale / p.scale;
+    let t_cam_lidar = match lidar_slot {
+        None => None,
+        Some((sparse, points)) => {
+            // load_batch checked both fields when it sized the buffers
+            let (path, t) = (meta.lidar.as_ref(), meta.t_cam_lidar);
+            let (path, t) = path.zip(t).ok_or_else(|| missing_lidar(meta))?;
+            read_points_into(path, points)?;
+            let (a, t2) = augment_lidar(&t, &p);
+            transform_points(points, &a);
+            project_sparse(points, &t2, &k, w, h, depth_scale, sparse);
+            Some(t2)
+        }
+    };
+    Ok(SampleOut {
         k,
+        depth_scale,
+        t_cam_lidar,
     })
 }
 
@@ -313,6 +420,7 @@ mod tests {
             shuffle: true,
             drop_last,
             augment: None,
+            lidar: false,
         }
     }
 
@@ -428,6 +536,60 @@ mod tests {
             assert_eq!(b.depth[j * px..(j + 1) * px], depth[..]);
             assert_eq!(b.k[j], k);
         }
+    }
+
+    /// Without augmentation the re-projected sparse depth must reproduce the generator's stored
+    /// depth_sparse PNG (Python, tools/gen_synthetic.py), up to its 80 m cutoff.
+    #[test]
+    fn lidar_without_augmentation_matches_the_stored_sparse_depth() {
+        let samples = fixtures();
+        let mut c = cfg(4, false);
+        (c.shuffle, c.lidar) = (false, true);
+        let b = Loader::new(samples.clone(), c)
+            .unwrap()
+            .epoch()
+            .next()
+            .unwrap()
+            .unwrap();
+        let px = (b.width * b.height) as usize;
+        assert_eq!(b.point_offsets.len(), 5);
+        for (j, &i) in b.indices.iter().enumerate() {
+            let m = &samples[i];
+            let raw = crate::lidar::decode_points(m.lidar.as_ref().unwrap()).unwrap();
+            let (lo, hi) = (b.point_offsets[j] * 4, b.point_offsets[j + 1] * 4);
+            assert_eq!(hi - lo, raw.len());
+            // T⁻¹·T is identity only to ~1e-16, so values may move by one float32 ulp
+            for (&a, &r) in b.points[lo..hi].iter().zip(&raw) {
+                assert!((a - r).abs() <= 1e-6 * r.abs().max(1.0), "{a} vs {r}");
+            }
+            assert_eq!(b.t_cam_lidar[j], m.t_cam_lidar.unwrap());
+            let stored = crate::decode::decode_depth(m.depth_sparse.as_ref().unwrap()).unwrap();
+            let ours = &b.depth_sparse[j * px..(j + 1) * px];
+            let cutoff = (80.0 * m.depth_scale) as u16;
+            let mut compared = 0;
+            for (&o, &s) in ours.iter().zip(&stored.data) {
+                if o <= cutoff || s > 0 {
+                    assert_eq!(o, s);
+                    compared += (s > 0) as usize;
+                }
+            }
+            assert!(compared > 1000, "only {compared} LiDAR pixels compared");
+        }
+    }
+
+    #[test]
+    fn missing_lidar_is_a_config_error() {
+        let mut samples = fixtures();
+        samples[0].lidar = None;
+        let mut c = cfg(2, false);
+        (c.shuffle, c.lidar) = (false, true);
+        let err = Loader::new(samples, c)
+            .unwrap()
+            .epoch()
+            .next()
+            .unwrap()
+            .unwrap_err();
+        assert!(err.to_string().contains("no lidar path"), "{err}");
     }
 
     #[test]

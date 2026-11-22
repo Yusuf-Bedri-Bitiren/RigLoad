@@ -39,8 +39,35 @@ property-tested consistency*, not novelty of the geometry.
 Main angle: **LiDAR ↔ camera consistency** (points, image, depth, K, extrinsics) at native
 speed, built on the camera pipeline. Claims follow measured data; pivot if they don't hold.
 
-**Not yet checked:** LiDAR-side tools (OpenPCDet, Open3D-ML, nuScenes devkit, MMDetection3D
-in depth). Do this pass before Step 11, with the same stop-and-discuss rule.
+The LiDAR-side pass (below) was done before Step 11.
+
+## LiDAR-side pass (Step 11, 2026-11-22)
+
+Sources: the two `transforms_3d.py` files below (read in full for BEVFusion; MMDetection3D's
+point-cloud transforms read verbatim, its image transforms only via an unverified summary),
+plus search results for OpenPCDet, Open3D-ML and Rust point-cloud crates.
+
+| Tool | How LiDAR ↔ camera consistency is handled | Gap left for us |
+|---|---|---|
+| [BEVFusion (MIT)](https://github.com/mit-han-lab/bevfusion) (`mmdet3d/datasets/pipelines/transforms_3d.py`) | **Closest prior art.** Image aug (`ImageAug3D`: resize, crop, flip, rotate) and LiDAR aug (`GlobalRotScaleTrans`, `RandomFlip3D`) are drawn **independently**; each records a matrix (`img_aug_matrix`, `lidar_aug_matrix`) and the **model** undoes/applies them when projecting. Intrinsics are not updated. `GTDepth` builds a depth map by inverting the LiDAR aug, projecting with `lidar2image`, then applying the image aug | Python/NumPy per sample; consistency is the consumer's job (every projection must chain the matrices correctly); no tests of it found. Independent draws are a deliberate design (more augmentation variety) |
+| [MMDetection3D](https://github.com/open-mmlab/mmdetection3d) (`mmdet3d/datasets/transforms/transforms_3d.py`) | `RandomFlip3D(sync_2d=True)` reuses the image flip for points and, only when `centers_2d` is present, sets `cam2img[0][2] = w - cx`; it does not touch `lidar2img` or extrinsics. `GlobalRotScaleTrans` changes points and boxes only and records `pcd_rotation`, `pcd_scale_factor`, `pcd_trans` | Python; camera matrices stay stale after rotation/scale unless downstream code applies the recorded values |
+| [OpenPCDet](https://github.com/open-mmlab/OpenPCDet) | `random_world_flip` / `random_world_rotation` / scaling act on points and boxes (LiDAR-only, per a [secondary walkthrough](https://xfyun.csdn.net/682d6b05606a8318e8589080.html); not checked in the repo) | LiDAR-only |
+| Fusion papers ([MoCa](https://arxiv.org/abs/2012.12741), [multi-modal survey](https://arxiv.org/pdf/2106.12735)) | Note that fusion methods often **drop** flip/rotation to stay aligned (ContFuse no flip, MVX-Net no rotation/translation), or record and reverse transforms to recover point↔pixel pairs | Confirms the problem is real and handled ad hoc |
+| [Open3D-ML](https://github.com/isl-org/Open3D-ML), nuScenes devkit | Nothing found on camera-consistent augmentation (search only; docs not read) | — |
+| Rust point-cloud crates ([pasture](https://github.com/Mortano/pasture), [ferrum_cloud](https://docs.rs/crate/ferrum_cloud/0.1.0), [pcd-py](https://pypi.org/project/pcd-py/), [threecrate](https://pypi.org/project/threecrate/)), [lidar-aug](https://pypi.org/project/lidar-aug/) (C++ core) | I/O and processing; lidar-aug augments points with a Python API | No camera consistency, not training loaders |
+
+**Verdict:** camera-consistent LiDAR augmentation **exists in Python research frameworks**
+(BEVFusion is the clearest), so it is not a new idea. **No native-speed loader was found
+that does it.** Our design differs in kind, not only speed: the outputs are **already
+consistent** (points, K, T_cam_lidar, depth updated so the plain projection
+`K · T_cam_lidar · p` holds), instead of shipping augmentation matrices every consumer must
+chain correctly, and that consistency is property-tested. Claim: "native speed + consistency
+folded into the outputs + tested", citing BEVFusion's matrix approach as the alternative.
+
+**KITTI velodyne `.bin`: VERIFIED** as a flat float32 array of (x, y, z, reflectance) per
+point, row-aligned (the [KITTI raw readme](https://ccv.eng.wayne.edu/reference/kitti_readme.txt)
+mirror and [Geiger et al. 2013](https://www.cvlibs.net/publications/Geiger2013IJRR.pdf)).
+Our generator writes the same layout.
 
 ## Findings from building the baselines (Step 3, 2026-11-20)
 

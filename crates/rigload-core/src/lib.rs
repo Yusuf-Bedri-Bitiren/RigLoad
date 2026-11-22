@@ -2,6 +2,7 @@
 
 mod decode;
 mod error;
+mod lidar;
 mod manifest;
 mod pipeline;
 mod rng;
@@ -9,6 +10,10 @@ mod transform;
 
 pub use decode::{Depth, Rgb, Sample, decode_depth, decode_rgb, load_sample};
 pub use error::{Error, Result};
+pub use lidar::{
+    Mat4, augment_lidar, decode_points, point_count, project_sparse, read_points_into,
+    transform_points,
+};
 pub use manifest::{SampleMeta, read_manifest};
 pub use pipeline::{Batch, EpochIter, Loader, LoaderConfig, SharedEpochIter};
 pub use rng::{SplitMix64, epoch_order};

@@ -17,6 +17,8 @@ import numpy as np
 OUT_W, OUT_H = 640, 192
 CROP_SCALE = (0.8, 1.0)  # crop height as a fraction of the largest crop with the output aspect
 JITTER = 0.2  # brightness, contrast, saturation factors drawn from [1 - JITTER, 1 + JITTER]
+YAW_RANGE = np.pi / 4  # LiDAR yaw in [-YAW_RANGE, YAW_RANGE] (OpenPCDet's KITTI default)
+SCALE_RANGE = (0.95, 1.05)  # scale about the camera centre
 
 
 def read_manifest(path: str | Path) -> list[dict]:
@@ -53,6 +55,9 @@ def draw_params(seed: int, epoch: int, index: int, width: int, height: int,
         "brightness": float(b),
         "contrast": float(c),
         "saturation": float(s),
+        # 3D only; drawn last so the 2D draws above are unchanged
+        "yaw": float(rng.uniform(-YAW_RANGE, YAW_RANGE)),
+        "scale": float(rng.uniform(*SCALE_RANGE)),
     }
 
 
@@ -74,3 +79,38 @@ def update_k(k, p: dict, out_w: int = OUT_W, out_h: int = OUT_H) -> np.ndarray:
     if p["flip"]:
         k[0, 2] = out_w - 1 - k[0, 2]
     return k
+
+
+def augment_lidar(points: np.ndarray, t_cam_lidar, p: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Same math as crates/rigload-core/src/lidar.rs: points p' = R T^-1 (s F) T p (mirror
+    and scale in the camera frame, then yaw about LiDAR z), extrinsic T' = T R^-1. The image
+    and K are unaffected by yaw and scale; metric depth scales by s."""
+    t = np.asarray(t_cam_lidar, dtype=np.float64)
+    s = p["scale"]
+    sf = np.diag([-s if p["flip"] else s, s, s, 1.0])
+    c, si = np.cos(p["yaw"]), np.sin(p["yaw"])
+    r = np.array([[c, -si, 0, 0], [si, c, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1.0]])
+    a = r @ np.linalg.inv(t) @ sf @ t
+    out = points.copy()
+    out[:, :3] = points[:, :3].astype(np.float64) @ a[:3, :3].T + a[:3, 3]
+    return out, t @ r.T
+
+
+def project_sparse(points: np.ndarray, t_cam_lidar, k, width: int, height: int,
+                   depth_scale: float) -> np.ndarray:
+    """Sparse uint16 depth (nearest point wins), same rules as rigload's project_sparse."""
+    t = np.asarray(t_cam_lidar, dtype=np.float64)
+    xyz = points[:, :3].astype(np.float64) @ t[:3, :3].T + t[:3, 3]
+    z = xyz[:, 2]
+    front = z > 0.1
+    xyz, z = xyz[front], z[front]
+    u = np.rint((k[0, 0] * xyz[:, 0] + k[0, 1] * xyz[:, 1]) / z + k[0, 2]).astype(np.int64)
+    v = np.rint(k[1, 1] * xyz[:, 1] / z + k[1, 2]).astype(np.int64)
+    value = np.rint(z * depth_scale)
+    ok = (u >= 0) & (u < width) & (v >= 0) & (v < height) & (value <= 65535)
+    lin, value = v[ok] * width + u[ok], np.maximum(value[ok], 1)
+    order = np.argsort(value, kind="stable")
+    _, first = np.unique(lin[order], return_index=True)
+    depth = np.zeros(height * width, dtype=np.uint16)
+    depth[lin[order[first]]] = value[order[first]]
+    return depth.reshape(height, width)

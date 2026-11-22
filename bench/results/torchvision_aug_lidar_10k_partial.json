@@ -1,0 +1,193 @@
+{
+  "env": {
+    "date_utc": "2026-11-22T14:36:21+00:00",
+    "git": "8e71e82-dirty",
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+    "cores_physical": 12,
+    "cores_logical": 16,
+    "ram_gib": 15.7,
+    "power_plugged": true,
+    "python": "3.13.5",
+    "torch_threads": 12,
+    "versions": {
+      "torch": "2.14.1+cu130",
+      "torchvision": "0.29.1+cu130",
+      "numpy": "2.5.4",
+      "pillow": "13.0.0",
+      "albumentationsx": "2.6.6",
+      "opencv-python-headless": "5.1.0.95",
+      "psutil": "7.2.2"
+    },
+    "available_ram_gib_at_start": 3.7,
+    "power_throttling_disabled": true
+  },
+  "config": {
+    "loader": "torchvision",
+    "augment": true,
+    "manifest": "C:\\CODING\\RigLoad\\data\\synthetic\\manifest.jsonl",
+    "n_samples": 10000,
+    "batch_size": 32,
+    "output_size": [
+      640,
+      192
+    ],
+    "warmup_batches": "max(10, 2 * workers)",
+    "timed_batches": 200,
+    "repeats": 7,
+    "seed": 0,
+    "page_cache": "warm (0.82 GB read first)"
+  },
+  "results": [
+    {
+      "workers": 0,
+      "repeats": [
+        {
+          "samples_per_s": 22.947182544873762,
+          "batch_p50_ms": 1298.844450036995,
+          "batch_p99_ms": 3231.884034023385,
+          "cpu_percent": 1149.5496419836895,
+          "peak_rss_mb": 835.68359375
+        },
+        {
+          "samples_per_s": 24.612800858212573,
+          "batch_p50_ms": 1246.6076000127941,
+          "batch_p99_ms": 1782.3931219975925,
+          "cpu_percent": 1155.4255828661348,
+          "peak_rss_mb": 835.765625
+        },
+        {
+          "samples_per_s": 24.286569719409396,
+          "batch_p50_ms": 1285.8900999999605,
+          "batch_p99_ms": 1853.546502982497,
+          "cpu_percent": 1142.7673019022197,
+          "peak_rss_mb": 837.36328125
+        },
+        {
+          "samples_per_s": 22.505417114558952,
+          "batch_p50_ms": 1336.4176499890164,
+          "batch_p99_ms": 2786.4196400740175,
+          "cpu_percent": 1129.0565569955088,
+          "peak_rss_mb": 839.31640625
+        },
+        {
+          "samples_per_s": 23.95111017357966,
+          "batch_p50_ms": 1250.0054000411183,
+          "batch_p99_ms": 2356.154903052371,
+          "cpu_percent": 1148.5247326034307,
+          "peak_rss_mb": 838.30078125
+        },
+        {
+          "samples_per_s": 22.296838856682044,
+          "batch_p50_ms": 1377.6483499677852,
+          "batch_p99_ms": 2779.0708188991985,
+          "cpu_percent": 1156.8989196423847,
+          "peak_rss_mb": 838.06640625
+        },
+        {
+          "samples_per_s": 23.899551392427696,
+          "batch_p50_ms": 1275.6657999707386,
+          "batch_p99_ms": 2149.6235420275448,
+          "cpu_percent": 1167.5420982719706,
+          "peak_rss_mb": 820.6015625
+        }
+      ],
+      "median": {
+        "samples_per_s": 23.899551392427696,
+        "batch_p50_ms": 1285.8900999999605,
+        "batch_p99_ms": 2356.154903052371,
+        "cpu_percent": 1149.5496419836895,
+        "peak_rss_mb": 837.36328125
+      },
+      "min": {
+        "samples_per_s": 22.296838856682044,
+        "batch_p50_ms": 1246.6076000127941,
+        "batch_p99_ms": 1782.3931219975925,
+        "cpu_percent": 1129.0565569955088,
+        "peak_rss_mb": 820.6015625
+      },
+      "max": {
+        "samples_per_s": 24.612800858212573,
+        "batch_p50_ms": 1377.6483499677852,
+        "batch_p99_ms": 3231.884034023385,
+        "cpu_percent": 1167.5420982719706,
+        "peak_rss_mb": 839.31640625
+      }
+    },
+    {
+      "workers": 2,
+      "repeats": [
+        {
+          "samples_per_s": 49.49246585977921,
+          "batch_p50_ms": 695.0683499453589,
+          "batch_p99_ms": 1273.498654938303,
+          "cpu_percent": 208.63925976582217,
+          "peak_rss_mb": 2298.5390625
+        },
+        {
+          "samples_per_s": 51.47313937273983,
+          "batch_p50_ms": 582.8852499835193,
+          "batch_p99_ms": 1498.4354919334874,
+          "cpu_percent": 216.9889398313229,
+          "peak_rss_mb": 2196.4375
+        },
+        {
+          "samples_per_s": 47.38231373403709,
+          "batch_p50_ms": 712.491600017529,
+          "batch_p99_ms": 1611.6960620693853,
+          "cpu_percent": 213.20884385547794,
+          "peak_rss_mb": 2194.76171875
+        },
+        {
+          "samples_per_s": 48.786125168069454,
+          "batch_p50_ms": 633.7982999975793,
+          "batch_p99_ms": 1542.9163590027013,
+          "cpu_percent": 204.23234576584156,
+          "peak_rss_mb": 2204.375
+        },
+        {
+          "samples_per_s": 47.67715010168531,
+          "batch_p50_ms": 654.1994500439614,
+          "batch_p99_ms": 1367.0607039635067,
+          "cpu_percent": 206.30610556696055,
+          "peak_rss_mb": 2187.5703125
+        },
+        {
+          "samples_per_s": 48.966103973519324,
+          "batch_p50_ms": 638.4441000409424,
+          "batch_p99_ms": 1245.8057769772129,
+          "cpu_percent": 204.90210500637727,
+          "peak_rss_mb": 2171.265625
+        },
+        {
+          "samples_per_s": 49.577241960016714,
+          "batch_p50_ms": 573.3545500552282,
+          "batch_p99_ms": 1558.3992500498425,
+          "cpu_percent": 204.08248942574264,
+          "peak_rss_mb": 2179.12109375
+        }
+      ],
+      "median": {
+        "samples_per_s": 48.966103973519324,
+        "batch_p50_ms": 638.4441000409424,
+        "batch_p99_ms": 1498.4354919334874,
+        "cpu_percent": 206.30610556696055,
+        "peak_rss_mb": 2194.76171875
+      },
+      "min": {
+        "samples_per_s": 47.38231373403709,
+        "batch_p50_ms": 573.3545500552282,
+        "batch_p99_ms": 1245.8057769772129,
+        "cpu_percent": 204.08248942574264,
+        "peak_rss_mb": 2171.265625
+      },
+      "max": {
+        "samples_per_s": 51.47313937273983,
+        "batch_p50_ms": 712.491600017529,
+        "batch_p99_ms": 1611.6960620693853,
+        "cpu_percent": 216.9889398313229,
+        "peak_rss_mb": 2298.5390625
+      }
+    }
+  ]
+}

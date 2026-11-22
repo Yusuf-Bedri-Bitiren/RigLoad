@@ -1,0 +1,199 @@
+{
+  "env": {
+    "date_utc": "2026-11-22T17:59:41+00:00",
+    "git": "8e71e82-dirty",
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12500H",
+    "cores_physical": 12,
+    "cores_logical": 16,
+    "ram_gib": 15.7,
+    "power_plugged": true,
+    "python": "3.13.5",
+    "torch_threads": 12,
+    "versions": {
+      "torch": "2.14.1+cu130",
+      "torchvision": "0.29.1+cu130",
+      "numpy": "2.5.4",
+      "pillow": "13.0.0",
+      "albumentationsx": "2.6.6",
+      "opencv-python-headless": "5.1.0.95",
+      "psutil": "7.2.2"
+    },
+    "available_ram_gib_at_start": 4.5,
+    "power_throttling_disabled": true
+  },
+  "config": {
+    "loader": "torchvision",
+    "augment": true,
+    "manifest": "C:\\CODING\\RigLoad\\data\\synthetic\\manifest_first3000.jsonl",
+    "n_samples": 3000,
+    "batch_size": 32,
+    "output_size": [
+      640,
+      192
+    ],
+    "warmup_batches": "max(10, 2 * workers)",
+    "timed_batches": 100,
+    "repeats": 7,
+    "seed": 0,
+    "page_cache": "warm (5.22 GB read first)"
+  },
+  "results": [
+    {
+      "workers": 0,
+      "repeats": [
+        {
+          "samples_per_s": 29.75366480655362,
+          "batch_p50_ms": 1057.8267000382766,
+          "batch_p99_ms": 1341.9415410456716,
+          "cpu_percent": 1150.2232178049137,
+          "peak_rss_mb": 812.3984375
+        },
+        {
+          "samples_per_s": 31.174564798828108,
+          "batch_p50_ms": 1024.500649946276,
+          "batch_p99_ms": 1288.0298510030843,
+          "cpu_percent": 1176.9007089776337,
+          "peak_rss_mb": 814.9140625
+        },
+        {
+          "samples_per_s": 30.763691973529035,
+          "batch_p50_ms": 1028.5635000327602,
+          "batch_p99_ms": 1303.9869010238908,
+          "cpu_percent": 1165.9259001959847,
+          "peak_rss_mb": 817.44921875
+        },
+        {
+          "samples_per_s": 32.073383709461226,
+          "batch_p50_ms": 992.6558000151999,
+          "batch_p99_ms": 1180.5096880171918,
+          "cpu_percent": 1178.5245821719168,
+          "peak_rss_mb": 816.57421875
+        },
+        {
+          "samples_per_s": 31.201017236620913,
+          "batch_p50_ms": 1005.2804000442848,
+          "batch_p99_ms": 1251.4005339809237,
+          "cpu_percent": 1164.6450017923448,
+          "peak_rss_mb": 816.3359375
+        },
+        {
+          "samples_per_s": 30.661662346108766,
+          "batch_p50_ms": 1028.055900009349,
+          "batch_p99_ms": 1297.2074879065624,
+          "cpu_percent": 1163.4963025222153,
+          "peak_rss_mb": 818.41015625
+        },
+        {
+          "samples_per_s": 31.980063500509875,
+          "batch_p50_ms": 990.5826500034891,
+          "batch_p99_ms": 1272.350354921073,
+          "cpu_percent": 1175.1736420514512,
+          "peak_rss_mb": 816.6328125
+        }
+      ],
+      "median": {
+        "samples_per_s": 31.174564798828108,
+        "batch_p50_ms": 1024.500649946276,
+        "batch_p99_ms": 1288.0298510030843,
+        "cpu_percent": 1165.9259001959847,
+        "peak_rss_mb": 816.57421875
+      },
+      "min": {
+        "samples_per_s": 29.75366480655362,
+        "batch_p50_ms": 990.5826500034891,
+        "batch_p99_ms": 1180.5096880171918,
+        "cpu_percent": 1150.2232178049137,
+        "peak_rss_mb": 812.3984375
+      },
+      "max": {
+        "samples_per_s": 32.073383709461226,
+        "batch_p50_ms": 1057.8267000382766,
+        "batch_p99_ms": 1341.9415410456716,
+        "cpu_percent": 1178.5245821719168,
+        "peak_rss_mb": 818.41015625
+      }
+    },
+    {
+      "workers": 2,
+      "repeats": [
+        {
+          "samples_per_s": 67.84113767157653,
+          "batch_p50_ms": 813.680250023026,
+          "batch_p99_ms": 1094.7012590384113,
+          "cpu_percent": 229.92448075117807,
+          "peak_rss_mb": 2343.41796875
+        },
+        {
+          "samples_per_s": 64.9786141877415,
+          "batch_p50_ms": 859.1079500620253,
+          "batch_p99_ms": 1129.709240965313,
+          "cpu_percent": 228.12316211419014,
+          "peak_rss_mb": 2335.31640625
+        },
+        {
+          "samples_per_s": 66.37652161542165,
+          "batch_p50_ms": 883.9416999835521,
+          "batch_p99_ms": 1012.2768669796642,
+          "cpu_percent": 229.78981360026341,
+          "peak_rss_mb": 2349.23828125
+        },
+        {
+          "samples_per_s": 64.90146236095165,
+          "batch_p50_ms": 852.5434500188567,
+          "batch_p99_ms": 1095.7127420103648,
+          "cpu_percent": 228.51779545157342,
+          "peak_rss_mb": 2355.0625
+        },
+        {
+          "samples_per_s": 61.08733940786583,
+          "batch_p50_ms": 845.8517499966547,
+          "batch_p99_ms": 1377.7244200475982,
+          "cpu_percent": 230.89701872865692,
+          "peak_rss_mb": 2369.77734375
+        },
+        {
+          "samples_per_s": 60.01378186499312,
+          "batch_p50_ms": 583.5237000137568,
+          "batch_p99_ms": 1380.2060110052118,
+          "cpu_percent": 223.0590368927381,
+          "peak_rss_mb": 2326.94140625
+        },
+        {
+          "samples_per_s": 66.06521159543941,
+          "batch_p50_ms": 722.6394999888726,
+          "batch_p99_ms": 1230.0846529309638,
+          "cpu_percent": 229.45402835857445,
+          "peak_rss_mb": 2353.8515625
+        }
+      ],
+      "median": {
+        "samples_per_s": 64.9786141877415,
+        "batch_p50_ms": 845.8517499966547,
+        "batch_p99_ms": 1129.709240965313,
+        "cpu_percent": 229.45402835857445,
+        "peak_rss_mb": 2349.23828125
+      },
+      "min": {
+        "samples_per_s": 60.01378186499312,
+        "batch_p50_ms": 583.5237000137568,
+        "batch_p99_ms": 1012.2768669796642,
+        "cpu_percent": 223.0590368927381,
+        "peak_rss_mb": 2326.94140625
+      },
+      "max": {
+        "samples_per_s": 67.84113767157653,
+        "batch_p50_ms": 883.9416999835521,
+        "batch_p99_ms": 1380.2060110052118,
+        "cpu_percent": 230.89701872865692,
+        "peak_rss_mb": 2369.77734375
+      }
+    },
+    {
+      "workers": 4,
+      "stopped_early": "available RAM fell below 1.5 GB",
+      "repeats_completed": 0,
+      "skipped": "low memory"
+    }
+  ]
+}
